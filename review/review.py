@@ -314,6 +314,13 @@ def fix_block(f):
         fenced(prompt, "text"))
 
 
+def content_key(path, body):
+    """Line-independent identity for a finding. An outdated comment reports
+    line: null, and a finding that survived an edit rarely sits on the same
+    line anyway — so resolution must compare on what was said, not where."""
+    return hashlib.sha1("{}:{}".format(path, (body or "")[:200]).encode()).hexdigest()
+
+
 def fingerprint(path, line, body):
     return hashlib.sha1("{}:{}:{}".format(path, line, body[:200]).encode()).hexdigest()
 
@@ -336,12 +343,71 @@ def review_count():
     return sum(1 for r in json.loads(raw) if (r.get("body") or "").startswith("### " + NAME))
 
 
+THREADS_Q = """
+query($owner:String!, $name:String!, $pr:Int!) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$pr) {
+      reviewThreads(first:100) {
+        nodes {
+          id isResolved isOutdated
+          comments(first:1) { nodes { body path line } }
+        }
+      }
+    }
+  }
+}"""
+
+RESOLVE_M = """
+mutation($id:ID!) { resolveReviewThread(input:{threadId:$id}) {
+  thread { id isResolved } } }"""
+
+
+def open_threads():
+    """Our own unresolved threads on this PR, with GitHub's outdated flag."""
+    owner, _, name = REPO.partition("/")
+    try:
+        raw = gh("api", "graphql", "-f", "query=" + THREADS_Q,
+                 "-F", "owner=" + owner, "-F", "name=" + name, "-F", "pr=" + str(PR))
+    except RuntimeError as e:
+        print("could not read threads: {}".format(e), file=sys.stderr)
+        return []
+    nodes = json.loads(raw)["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"]
+    out = []
+    for t in nodes:
+        c = (t["comments"]["nodes"] or [None])[0]
+        # Only ours. Someone else's conversation is not ours to close.
+        if not c or NAME not in (c["body"] or "")[:80] or t["isResolved"]:
+            continue
+        out.append({"id": t["id"], "outdated": t["isOutdated"],
+                    "key": content_key(c["path"], c["body"])})
+    return out
+
+
+def resolve_stale(current_keys):
+    """Close a thread only when BOTH signals agree: the anchored code changed,
+    AND this run no longer reports it. The model going quiet is not evidence a
+    bug was fixed — on its own it would eventually hide a real one."""
+    closed = 0
+    for t in open_threads():
+        if not t["outdated"] or t["key"] in current_keys:
+            continue
+        try:
+            gh("api", "graphql", "-f", "query=" + RESOLVE_M, "-F", "id=" + t["id"])
+            closed += 1
+        except RuntimeError as e:
+            print("could not resolve {}: {}".format(t["id"][:12], e), file=sys.stderr)
+            break  # almost certainly a permissions problem; don't hammer it
+    if closed:
+        print("resolved {} stale thread(s)".format(closed), file=sys.stderr)
+
+
 def post(result, valid):
     seen = existing_fingerprints()
-    comments, orphans = [], []
+    comments, orphans, labelled = [], [], []
     for f in result["findings"]:
         label = "{} **{}** · {} · {}\n\n{}".format(
             dot(f["severity"]), NAME, f["severity"], f["category"], f["body"]) + fix_block(f)
+        labelled.append((f, label))
         if f["line"] in valid.get(f["path"], ()):
             if fingerprint(f["path"], f["line"], label) not in seen:
                 comments.append({"path": f["path"], "line": f["line"], "side": "RIGHT", "body": label})
@@ -373,6 +439,7 @@ def post(result, valid):
         payload["body"] = body + "\n\n_(Inline anchoring failed; findings listed above.)_"
         gh("api", path, "--input", "-", stdin=json.dumps(payload))
     print("posted {} inline, {} in summary".format(len(comments), len(orphans)), file=sys.stderr)
+    resolve_stale({content_key(f["path"], lbl) for f, lbl in labelled})
 
 
 def main():

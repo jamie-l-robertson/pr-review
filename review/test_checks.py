@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import dot, fenced, fix_block, tally
+from review import content_key, dot, fenced, fix_block, tally
 
 
 def kinds(text):
@@ -88,6 +88,23 @@ def test_severity_dots():
     assert tally([]) == ""
     assert dot("weird") == "⚪"
     assert len({dot(s) for s in ("blocker", "major", "minor", "nit")}) == 4
+
+
+def test_content_key_ignores_line_numbers():
+    # An outdated comment reports line: null, so identity must not involve the
+    # line — otherwise nothing ever matches and every outdated thread resolves.
+    # Real bodies always exceed the 200-char prefix — the fix block alone is
+    # ~600 chars — so build one the way post() does.
+    f = {"path": "a.ts", "line": 9, "severity": "major", "category": "security",
+         "body": "Secrets are inherited wholesale rather than passed explicitly."}
+    body = "🟠 **Inquisitor** · major · security\n\n{}".format(f["body"]) + fix_block(f)
+    assert len(body) > 200
+    assert content_key("a.ts", body) == content_key("a.ts", body)
+    assert content_key("a.ts", body) != content_key("b.ts", body)
+    assert content_key("a.ts", body) != content_key("a.ts", body.replace("major", "nit"))
+    # Detail past the prefix does not break the match, which is what lets a
+    # reworded tail still resolve its thread.
+    assert content_key("a.ts", body) == content_key("a.ts", body + "\n\nmore text")
 
 
 def test_fenced_widths():

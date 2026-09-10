@@ -136,6 +136,27 @@ The dot leads every inline comment, and the review body opens with a tally
 (worst first, zeroes omitted) so the shape of a review is legible before you
 read a word of it.
 
+## Resolving threads
+
+On each push the reviewer closes its own stale threads, but only when **both**
+signals agree:
+
+1. GitHub has marked the thread **outdated** — the anchored code actually changed.
+2. This run no longer reports an equivalent finding.
+
+Either signal alone is not enough. A model omitting a finding is not evidence the
+bug was fixed — it may simply not have mentioned it this time — and on its own that
+rule would eventually hide something real. Code changing near a comment is not
+evidence either. Requiring both means a thread you never touched stays open, and a
+finding still being reported stays open even if you rewrote the line.
+
+Matching is on content, not line number: an outdated comment reports `line: null`,
+and a finding that survives an edit rarely sits on the same line anyway.
+
+It only ever touches threads it opened itself — a human conversation is not its to
+close. Resolution needs GraphQL (`resolveReviewThread`; there is no REST
+equivalent), which the `pull-requests: write` grant already covers.
+
 ## Silencing it
 
 Put `[skip review]` in the PR title. The job is skipped entirely — no checks, no
