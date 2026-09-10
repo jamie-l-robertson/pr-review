@@ -63,6 +63,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `model` | `claude-sonnet-5` | Any Anthropic model id. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
+| `pnpm-version` | `10` | Only used when linting. Better set `packageManager` in your `package.json`. |
 | `lint-command` | autodetect | Override. Must write ESLint JSON to `$RUNNER_TEMP/eslint.json`. |
 | `max-context-bytes` | `400000` | Ceiling on the bundle sent to the API. |
 | `tooling-ref` | `v1` | Ref of this repo to run. |

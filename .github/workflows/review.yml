@@ -15,6 +15,12 @@ on:
         description: Name shown on the review and each inline comment.
         type: string
         default: Inquisitor
+      pnpm-version:
+        description: >-
+          pnpm major to install. Ignored if the repo's package.json sets
+          packageManager, which is the better place for it.
+        type: string
+        default: "10"
       max-reviews-per-pr:
         description: Stop reviewing a PR after this many reviews. 0 disables the cap.
         type: number
@@ -93,6 +99,8 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         if: steps.detect.outputs.run_eslint == 'true'
+        with:
+          version: ${{ inputs.pnpm-version }}
       - uses: actions/setup-node@v6
         if: steps.detect.outputs.run_eslint == 'true'
         with:
