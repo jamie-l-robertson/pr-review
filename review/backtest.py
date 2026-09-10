@@ -8,6 +8,9 @@ pricier model earns its cost.
 
     python review/backtest.py 100 101 102        # specific PRs
     python review/backtest.py --last 10          # last N merged PRs
+    python review/backtest.py --at <sha> --base <sha>   # one exact diff
+
+Needs ANTHROPIC_API_KEY in the environment and `pip install anthropic`.
 
 Each PR is checked out into a throwaway worktree, so file contents are the ones
 that existed at that commit rather than whatever is on your branch today.
@@ -71,16 +74,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("prs", nargs="*", type=int)
     ap.add_argument("--last", type=int, help="Instead of listing PRs, take the last N merged.")
+    ap.add_argument("--at", help="Review this exact commit instead of a PR head. "
+                                 "Use to re-test recall against a diff you know the "
+                                 "answer to. Requires --base.")
+    ap.add_argument("--base", help="Base commit for --at.")
     ap.add_argument("--model", default=os.environ.get("MODEL") or "claude-sonnet-5")
     ap.add_argument("--out", default="backtest.md")
     args = ap.parse_args()
 
-    if args.last:
+    if args.at:
+        if not args.base:
+            ap.error("--at requires --base")
+        prs = [{"number": 0, "title": "commit " + args.at[:8],
+                "baseRefOid": args.base, "headRefOid": args.at}]
+    elif args.last:
         prs = merged_prs(args.last)
     elif args.prs:
         prs = [pr_meta(n) for n in args.prs]
     else:
-        ap.error("give PR numbers or --last N")
+        ap.error("give PR numbers, --last N, or --at SHA --base SHA")
 
     rows, total = [], 0
     for pr in prs:
