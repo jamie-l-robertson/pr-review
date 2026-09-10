@@ -65,7 +65,7 @@ That's the whole setup — no scripts to copy, no config file.
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | `claude-opus-5` | Any Anthropic model id. |
-| `effort` | `low` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
+| `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
 | `pnpm-version` | `10` | Only used when linting. Better set `packageManager` in your `package.json`. |
@@ -162,7 +162,8 @@ consumer picks it up on the next `v1`.
 
 The dot leads every inline comment, and the review body opens with a tally
 (worst first, zeroes omitted) so the shape of a review is legible before you
-read a word of it.
+read a word of it. A clean run says so outright rather than posting an empty
+review — silence is ambiguous, and "nothing to report" is not.
 
 ## Resolving threads
 

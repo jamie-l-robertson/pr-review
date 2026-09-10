@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
 MODEL = os.environ.get("MODEL") or "claude-opus-5"
-EFFORT = os.environ.get("EFFORT") or "low"
+EFFORT = os.environ.get("EFFORT") or "medium"
 NAME = os.environ.get("REVIEWER_NAME") or "Inquisitor"
 MAX_REVIEWS = int(os.environ.get("MAX_REVIEWS_PER_PR") or 10)
 NO_POST = bool(os.environ.get("NO_POST"))
@@ -534,8 +534,12 @@ def post(result, valid):
             orphans.append("- `{}:{}` — {}".format(f["path"], f["line"], label.replace("\n\n", " ")))
 
     counts = tally(result["findings"])
-    body = "### {}\n\n{}{}".format(
-        NAME, (counts + "\n\n") if counts else "", result["summary"])
+    if result["findings"]:
+        headline = counts + "\n\n"
+    else:
+        headline = "✅ **Nothing to report.** {} file(s) reviewed against all eight " \
+                   "topics; no defects found.\n\n".format(len(valid) or 0)
+    body = "### {}\n\n{}{}".format(NAME, headline, result["summary"])
     if orphans:
         body += "\n\n<details><summary>Findings outside the diff ({})</summary>\n\n{}\n</details>".format(
             len(orphans), "\n".join(orphans))
