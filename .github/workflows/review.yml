@@ -1,0 +1,126 @@
+name: AI PR review
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory holding package.json / tsconfig.json. Default repo root.
+        type: string
+        default: "."
+      model:
+        description: Anthropic model id.
+        type: string
+        default: claude-opus-5
+      lint-command:
+        description: Overrides autodetection. Must write ESLint JSON to $RUNNER_TEMP/eslint.json.
+        type: string
+        default: ""
+      max-context-bytes:
+        description: Ceiling on the context bundle sent to the API.
+        type: number
+        default: 400000
+      tooling-ref:
+        description: Ref of jamie-l-robertson/pr-review to run.
+        type: string
+        default: v1
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check out the review tooling
+        uses: actions/checkout@v5
+        with:
+          repository: jamie-l-robertson/pr-review
+          ref: ${{ inputs.tooling-ref }}
+          path: .pr-review
+
+      - name: Resolve diff range
+        id: range
+        run: echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+
+      # HARD GATE. A diff carrying a live credential must not reach a third-party
+      # API, so this runs before anything is assembled or sent.
+      - name: Scan for secrets (gitleaks)
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks git --log-opts="${{ steps.range.outputs.base }}..HEAD" --redact --no-banner
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Decide which checks to run
+        id: detect
+        env:
+          BASE_SHA: ${{ steps.range.outputs.base }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: python .pr-review/review/detect.py
+
+      - uses: pnpm/action-setup@v4
+        if: steps.detect.outputs.run_eslint == 'true'
+      - uses: actions/setup-node@v6
+        if: steps.detect.outputs.run_eslint == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
+
+      - name: Lint
+        if: steps.detect.outputs.run_eslint == 'true'
+        continue-on-error: true
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          pnpm install --frozen-lockfile
+          ${{ inputs.lint-command || format('pnpm lint --format json -o {0}/eslint.json', runner.temp) }}
+
+      - name: SAST (semgrep)
+        if: steps.detect.outputs.semgrep_configs != ''
+        continue-on-error: true
+        run: |
+          pip install --quiet semgrep
+          semgrep scan ${{ steps.detect.outputs.semgrep_configs }} \
+            --json -o "$RUNNER_TEMP/semgrep.json" --quiet --error=false
+
+      - name: PII scan
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ steps.range.outputs.base }}
+        run: |
+          python .pr-review/review/test_checks.py
+          python .pr-review/review/pii.py > "$RUNNER_TEMP/pii.json"
+
+      - name: Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ steps.range.outputs.base }}
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          MODEL: ${{ inputs.model }}
+          MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
+        run: |
+          pip install --quiet anthropic
+          python .pr-review/review/review.py
