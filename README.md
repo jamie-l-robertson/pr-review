@@ -14,13 +14,26 @@ output and the repo's own conventions. Findings come back as inline review comme
 ```yaml
 name: review
 on: pull_request
+
+# Required. A reusable workflow cannot request more permission than its caller
+# grants, and most repos default the token to read-only — without this block the
+# run fails at startup, before any job begins.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     uses: jamie-l-robertson/pr-review/.github/workflows/review.yml@v1
     secrets: inherit
 ```
 
-`ANTHROPIC_API_KEY` needs to exist as a secret on the repo or the account.
+`ANTHROPIC_API_KEY` needs to exist as a secret on the repo or the account:
+
+```bash
+gh secret set ANTHROPIC_API_KEY --repo <owner>/<repo>
+```
+
 That's the whole setup — no scripts to copy, no config file.
 
 ### Inputs
