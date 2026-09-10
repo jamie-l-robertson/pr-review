@@ -241,8 +241,39 @@ def gh(*args, stdin=None):
     return r.stdout
 
 
+FIX_PROMPT = """Validate before you act. The report below may be wrong \
+— reviewers hallucinate, and this one had no ability to run the code.
+
+File: {path}
+Line: ~{line}
+Reported {severity} {category} issue:
+
+{body}
+
+Steps:
+1. Read the surrounding code and the callers before forming a view.
+2. Decide whether the problem is real AND still present. If it is not, say so \
+and stop. Do not make a change just to satisfy the report.
+3. If it is real, make the smallest change that fixes it and nothing else. \
+Do not refactor, rename, or tidy adjacent code.
+4. Add or extend a test that fails without your fix, unless the change is \
+purely cosmetic.
+"""
+
+
+def fix_block(f):
+    """A prompt the author can paste into an agent. Collapsed, so a comment
+    still reads as a comment rather than a wall of instructions."""
+    prompt = FIX_PROMPT.format(
+        path=f["path"], line=f["line"], severity=f["severity"],
+        category=f["category"], body=f["body"].strip(),
+    )
+    return "\n\n<details>\n<summary>Prompt to fix this</summary>\n\n{}\n</details>".format(
+        fenced(prompt, "text"))
+
+
 def fingerprint(path, line, body):
-    return hashlib.sha1("{}:{}:{}".format(path, line, body[:60]).encode()).hexdigest()
+    return hashlib.sha1("{}:{}:{}".format(path, line, body[:200]).encode()).hexdigest()
 
 
 def existing_fingerprints():
@@ -258,7 +289,8 @@ def post(result, valid):
     seen = existing_fingerprints()
     comments, orphans = [], []
     for f in result["findings"]:
-        label = "**{}** · {} · {}\n\n{}".format(NAME, f["severity"], f["category"], f["body"])
+        label = "**{}** · {} · {}\n\n{}".format(
+            NAME, f["severity"], f["category"], f["body"]) + fix_block(f)
         if f["line"] in valid.get(f["path"], ()):
             if fingerprint(f["path"], f["line"], label) not in seen:
                 comments.append({"path": f["path"], "line": f["line"], "side": "RIGHT", "body": label})

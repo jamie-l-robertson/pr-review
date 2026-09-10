@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
+from review import fenced, fix_block
 
 
 def kinds(text):
@@ -65,6 +66,25 @@ def test_route():
     assert route(["docker-compose.yml"])[1] == []
     # An unknown extension is silently agent-only, not a crash.
     assert route(["notes.rst"]) == (False, [])
+
+
+def test_fix_block_survives_fences_in_the_body():
+    # A finding quoting a markdown fence must not end the block early and spill
+    # the rest of the prompt into the comment as prose.
+    f = {
+        "path": "docs/x.md", "line": 3, "severity": "minor", "category": "style",
+        "body": "This block is wrong:\n```js\nfoo()\n```\nUse ts instead.",
+    }
+    out = fix_block(f)
+    assert "````text" in out, "wrapper must be wider than the fence it contains"
+    assert out.rstrip().endswith("</details>")
+    assert "Use ts instead." in out
+
+
+def test_fenced_widths():
+    assert fenced("plain").startswith("```\n")
+    assert fenced("a ``` b").startswith("````")
+    assert fenced("a ````` b").startswith("``````")
 
 
 if __name__ == "__main__":
