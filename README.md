@@ -240,6 +240,40 @@ it sees the code as it was, not as it is now. Grade the findings real / wrong /
 trivial before trusting the tool or paying for a bigger model. A finding you would
 not have wanted to see is a cost, not a neutral.
 
+## Optional: run it as your own bot
+
+Two things the default `GITHUB_TOKEN` cannot do, both fixed by the same setup:
+resolving review threads, and posting as anything other than `github-actions[bot]`.
+
+Create a **private GitHub App** on your own account — Settings → Developer settings
+→ GitHub Apps → New. It is private by default: owned by you, installable only on
+your account, never listed anywhere.
+
+- **Name it whatever you want the bot called** — comments post as `<AppName>[bot]`.
+- **Permissions:** Repository → Pull requests → **Read and write**. Nothing else.
+- **Where can this be installed:** Only on this account.
+- Generate a private key, then install the App on the repos you want reviewed.
+
+Then set two secrets on each repo (or once on the account):
+
+```bash
+gh secret set APP_ID --repo <owner>/<repo>          # the numeric App ID
+gh secret set APP_PRIVATE_KEY --repo <owner>/<repo> # paste the whole .pem
+```
+
+and pass them through in the stub:
+
+```yaml
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+```
+
+All of it is optional. Leave the two out and everything still works — the reviewer
+falls back to the default token, posts as `github-actions[bot]`, and leaves stale
+threads for GitHub to collapse as outdated.
+
 ## Naming
 
 `reviewer-name` brands the review body and every inline comment. The comment

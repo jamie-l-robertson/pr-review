@@ -46,6 +46,13 @@ on:
     secrets:
       ANTHROPIC_API_KEY:
         required: true
+      APP_ID:
+        description: >-
+          Optional GitHub App. Supply both this and APP_PRIVATE_KEY to post as
+          your own bot and to resolve threads — GITHUB_TOKEN cannot do either.
+        required: false
+      APP_PRIVATE_KEY:
+        required: false
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
@@ -67,7 +74,18 @@ jobs:
       github.event.pull_request.draft == false &&
       !contains(github.event.pull_request.title, '[skip review]')
     runs-on: ubuntu-latest
+    # Job-level env, not workflow-level: the secrets context is not available there.
+    env:
+      HAS_APP: ${{ secrets.APP_ID != '' && secrets.APP_PRIVATE_KEY != '' }}
     steps:
+      - name: Mint a GitHub App token
+        id: apptoken
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Check out the pull request
         uses: actions/checkout@v5
         with:
@@ -141,7 +159,8 @@ jobs:
       - name: Review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GH_TOKEN: ${{ github.token }}
+          # Falls back to the default token, which posts fine but cannot resolve threads.
+          GH_TOKEN: ${{ steps.apptoken.outputs.token || github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ steps.range.outputs.base }}
