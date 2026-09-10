@@ -460,7 +460,7 @@ def post(result, valid):
         comments = comments[:MAX_COMMENTS]
         body += "\n\n_{} further finding(s) withheld — a review this long usually means "\
                 "the diff was misread rather than that the code is this broken._".format(dropped)
-    body += "\n\n<sub>{} · {} · {} finding(s)</sub>".format(NAME, MODEL, len(result["findings"]))
+    body += "\n\n<sub>{} · {} finding(s)</sub>".format(NAME, len(result["findings"]))
     payload = {"event": "COMMENT", "body": body, "comments": comments}
 
     path = "repos/{}/pulls/{}/reviews".format(REPO, PR)
