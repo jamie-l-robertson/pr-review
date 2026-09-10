@@ -55,7 +55,7 @@ env:
   ANTHROPIC_SDK_VERSION: 1.5.0
 
 jobs:
-  review:
+  inquisitor:
     # Escape hatch: put [skip review] in the PR title to silence it.
     if: >-
       github.event.pull_request.draft == false &&
