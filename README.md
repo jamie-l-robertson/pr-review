@@ -25,7 +25,10 @@ permissions:
 jobs:
   review:
     uses: jamie-l-robertson/pr-review/.github/workflows/review.yml@v1
-    secrets: inherit
+    # Not `secrets: inherit` — that forwards every secret your repo holds, when
+    # the reviewer needs exactly one.
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ### Pin to a commit
