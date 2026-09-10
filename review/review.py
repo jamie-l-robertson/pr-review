@@ -60,6 +60,7 @@ SCHEMA = {
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
                     "severity": {"type": "string", "enum": ["blocker", "major", "minor", "nit"]},
+                    "remedy": {"type": "string"},
                     "category": {"type": "string", "enum": [
                         "security", "cybersecurity", "performance", "accessibility",
                         "usability", "code-quality", "testing", "ai-safety",
@@ -67,7 +68,7 @@ SCHEMA = {
                     ]},
                     "body": {"type": "string"},
                 },
-                "required": ["id", "path", "line", "severity", "category", "body"],
+                "required": ["id", "path", "line", "severity", "category", "body", "remedy"],
                 "additionalProperties": False,
             },
         },
@@ -115,10 +116,19 @@ Rules:
 for context, but a finding anchored outside the diff cannot be posted.
 - No praise, no summary of what the code does, no style opinions the project's own \
 conventions do not state. If the change is fine, return an empty findings array.
-- One finding per real problem. Say what breaks, under what input, and the fix — \
-in at most three sentences. Do not restate what the code does, do not preamble, \
-do not hedge. A reader should get it in one glance; if it needs more than three \
-sentences it is probably two findings or a guess.
+- body: WHAT IS WRONG AND WHAT IT COSTS — never how to fix it. Name the defect, \
+the input or state that triggers it, and the consequence. At most three sentences. \
+No preamble, no restating what the code does, no hedging, and no "consider…", \
+"you should…", "use X instead" — every word of remedy belongs in the remedy field, \
+not here. A reader should understand the problem in one glance.
+- remedy: the fix, written for an engineer who has the file open and has not read \
+the diff. Be specific and be longer than the body: name the function, the guard, \
+the API or the pattern to reach for; say what the corrected behaviour must be; \
+call out anything that must change with it (a caller, a test, a type, a migration); \
+and name what would make the obvious fix wrong. If more than one approach is \
+defensible, say which you would pick and why. This text is never shown as prose — \
+it goes into a prompt the author pastes into a coding agent, so write it as \
+instructions to that agent.
 - Pre-check output (lint/SAST/PII) is included below. It is NOISY. Verify each item \
 against the actual code before repeating it, and silently drop false positives — \
 in particular, fictional place and character names are not personal data.
@@ -393,23 +403,33 @@ def gh(*args, stdin=None):
     return r.stdout
 
 
-FIX_PROMPT = """Validate before you act. The report below may be wrong \
-— reviewers hallucinate, and this one had no ability to run the code.
+STEPS = """Steps:
+1. Read the code around it, and the callers, before forming a view.
+2. Decide whether the problem is real AND still present. If it is not, say so and \
+move on. Do not change code to satisfy a report you cannot confirm.
+3. If it is real, make the smallest change that fixes it and nothing else. Do not \
+refactor, rename, or tidy adjacent code.
+4. Add or extend a test that fails without the fix, unless the change is purely \
+cosmetic.
+5. Say briefly what you changed and what you rejected."""
+
+PREAMBLE = """Validate before you act. Each item below may be wrong — the reviewer \
+could not run the code, and has been wrong before. Treat every one as a claim to \
+check, not a task to complete."""
+
+FIX_PROMPT = """{preamble}
 
 File: {path}
 Line: ~{line}
-Reported {severity} {category} issue:
+Reported {severity} {category} issue.
 
+What is wrong:
 {body}
 
-Steps:
-1. Read the surrounding code and the callers before forming a view.
-2. Decide whether the problem is real AND still present. If it is not, say so \
-and stop. Do not make a change just to satisfy the report.
-3. If it is real, make the smallest change that fixes it and nothing else. \
-Do not refactor, rename, or tidy adjacent code.
-4. Add or extend a test that fails without your fix, unless the change is \
-purely cosmetic.
+Suggested fix:
+{remedy}
+
+{steps}
 """
 
 
@@ -417,8 +437,10 @@ def fix_block(f):
     """A prompt the author can paste into an agent. Collapsed, so a comment
     still reads as a comment rather than a wall of instructions."""
     prompt = FIX_PROMPT.format(
-        path=f["path"], line=f["line"], severity=f["severity"],
+        preamble=PREAMBLE, path=f["path"], line=f["line"], severity=f["severity"],
         category=f["category"], body=f["body"].strip(),
+        remedy=(f.get("remedy") or "Not supplied — work it out from the defect.").strip(),
+        steps=STEPS,
     )
     return "\n\n<details>\n<summary>Prompt to fix this</summary>\n\n{}\n</details>".format(
         fenced(prompt, "text"))
@@ -445,6 +467,53 @@ def content_key(path, body):
     line: null, and a finding that survived an edit rarely sits on the same
     line anyway — so resolution must compare on what was said, not where."""
     return hashlib.sha1("{}:{}".format(path, (body or "")[:200]).encode()).hexdigest()
+
+
+ONESHOT_MARKER = "<!-- inq-oneshot -->"
+
+
+def all_in_one(findings):
+    """One prompt covering every finding, so the author pastes once instead of
+    opening twenty threads and copying each."""
+    if not findings:
+        return ""
+    items = []
+    for i, f in enumerate(findings, 1):
+        items.append(
+            "{}. {}:{} — {} ({})\n   What is wrong: {}\n   Suggested fix: {}".format(
+                i, f["path"], f["line"], f["severity"], f["category"],
+                " ".join(f["body"].split()),
+                " ".join((f.get("remedy") or "Not supplied.").split())))
+    text = "{}\n\nWork through all {} items below. They are independent; fix them in \
+any order, and commit them separately if that is easier to review.\n\n{}\n\n{}".format(
+        PREAMBLE, len(findings), "\n\n".join(items), STEPS)
+    return ("### {} — fix all {} in one go\n\nPaste this into your coding agent.\n\n"
+            "{}\n\n{}").format(NAME, len(findings), fenced(text, "text"), ONESHOT_MARKER)
+
+
+def post_oneshot(findings, sha):
+    """A standalone PR comment, edited in place across pushes rather than
+    reposted — a fresh copy every push would bury the conversation."""
+    path = "repos/{}/issues/{}/comments".format(REPO, PR)
+    body = all_in_one(findings) or (
+        "### {} — nothing outstanding\n\nNo findings as of `{}`.\n\n{}".format(
+            NAME, sha[:8], ONESHOT_MARKER))
+    try:
+        existing = json.loads(gh("api", path, "--paginate"))
+    except RuntimeError:
+        existing = []
+    mine = [c for c in existing if ONESHOT_MARKER in (c.get("body") or "")]
+    try:
+        if mine:
+            gh("api", "-X", "PATCH",
+               "repos/{}/issues/comments/{}".format(REPO, mine[-1]["id"]),
+               "--input", "-", stdin=json.dumps({"body": body}))
+            print("updated the one-shot comment", file=sys.stderr)
+        elif findings:
+            gh("api", path, "--input", "-", stdin=json.dumps({"body": body}))
+            print("posted the one-shot comment", file=sys.stderr)
+    except RuntimeError as e:
+        print("could not post the one-shot comment: {}".format(e), file=sys.stderr)
 
 
 def fingerprint(path, line, body):
@@ -591,6 +660,7 @@ def post(result, valid):
         gh("api", path, "--input", "-", stdin=json.dumps(payload))
     print("posted {} inline, {} in summary".format(len(comments), len(orphans)), file=sys.stderr)
     resolve_stale({marker(f) for f, _ in labelled})
+    post_oneshot(result["findings"], os.environ.get("GITHUB_SHA", ""))
 
 
 def main():

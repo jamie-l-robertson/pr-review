@@ -165,6 +165,22 @@ The dot leads every inline comment, and the review body opens with a tally
 read a word of it. A clean run says so outright rather than posting an empty
 review — silence is ambiguous, and "nothing to report" is not.
 
+## What a comment says, and what the prompt says
+
+An inline comment states **only what is wrong** — the defect, what triggers it, and
+what it costs, in at most three sentences. It never prescribes a fix, because a
+one-line "use X instead" invites you to apply it without checking whether the
+report is even right.
+
+The fix lives in a collapsed **Prompt to fix this** block on the same comment,
+written as instructions to a coding agent: which function and guard to reach for,
+what the corrected behaviour must be, what else has to change with it, and what
+would make the obvious fix wrong.
+
+A separate standalone comment on the PR carries **one prompt covering every
+finding**, so you paste once rather than opening twenty threads. It is edited in
+place on each push rather than reposted.
+
 ## Resolving threads
 
 On each push the reviewer closes its own stale threads, but only when **both**

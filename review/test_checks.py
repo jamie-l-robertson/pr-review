@@ -9,7 +9,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import SCHEMA, SYSTEM, content_key, dot, fenced, fix_block, marker, marker_of, tally
+from review import (SCHEMA, SYSTEM, all_in_one, content_key, dot, fenced,
+                    fix_block, marker, marker_of, tally)
 
 
 def kinds(text):
@@ -129,6 +130,31 @@ def test_content_key_ignores_line_numbers():
     # Detail past the prefix does not break the match, which is what lets a
     # reworded tail still resolve its thread.
     assert content_key("a.ts", body) == content_key("a.ts", body + "\n\nmore text")
+
+
+def test_comment_body_carries_no_remedy_and_the_prompt_does():
+    f = {"id": "x", "path": "a.ts", "line": 9, "severity": "major",
+         "category": "security", "body": "Rejects on network failure.",
+         "remedy": "Wrap the fetch and add an AbortSignal timeout."}
+    block = fix_block(f)
+    # The remedy belongs in the pasteable prompt, never in the visible comment.
+    assert "AbortSignal" in block
+    assert "What is wrong:" in block and "Suggested fix:" in block
+    # A missing remedy must not blow up the template.
+    assert "Not supplied" in fix_block({k: v for k, v in f.items() if k != "remedy"})
+
+
+def test_one_shot_covers_every_finding():
+    fs = [dict(id=str(i), path="f{}.ts".format(i), line=i, severity="minor",
+               category="code-quality", body="b{}".format(i), remedy="r{}".format(i))
+          for i in range(3)]
+    out = all_in_one(fs)
+    for i in range(3):
+        assert "f{}.ts:{}".format(i, i) in out
+        assert "r{}".format(i) in out
+    assert "fix all 3 in one go" in out
+    assert out.count("Steps:") == 1, "steps should appear once, not per finding"
+    assert all_in_one([]) == ""
 
 
 def test_categories_match_the_documented_topics():
