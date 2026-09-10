@@ -10,7 +10,13 @@ on:
       model:
         description: Anthropic model id.
         type: string
-        default: claude-sonnet-5
+        default: claude-opus-5
+      effort:
+        description: >-
+          low | medium | high | xhigh | max. Ignored on models that reject it
+          (Haiku 4.5, Sonnet 4.5).
+        type: string
+        default: low
       reviewer-name:
         description: Name shown on the review and each inline comment.
         type: string
@@ -141,6 +147,7 @@ jobs:
           BASE_SHA: ${{ steps.range.outputs.base }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
           MODEL: ${{ inputs.model }}
+          EFFORT: ${{ inputs.effort }}
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}

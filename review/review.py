@@ -15,7 +15,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
-MODEL = os.environ.get("MODEL") or "claude-sonnet-5"
+MODEL = os.environ.get("MODEL") or "claude-opus-5"
+EFFORT = os.environ.get("EFFORT") or "low"
 NAME = os.environ.get("REVIEWER_NAME") or "Inquisitor"
 MAX_REVIEWS = int(os.environ.get("MAX_REVIEWS_PER_PR") or 10)
 NO_POST = bool(os.environ.get("NO_POST"))
@@ -87,11 +88,12 @@ sentences it is probably two findings or a guess.
 - Pre-check output (lint/SAST/PII) is included below. It is NOISY. Verify each item \
 against the actual code before repeating it, and silently drop false positives — \
 in particular, fictional place and character names are not personal data.
-- id: a short kebab-case slug naming THE DEFECT ITSELF, never your wording — \
-e.g. `secrets-inherit-overbroad`, `unbounded-loop-on-empty-input`. The same defect \
-must produce the same id on a later run even if you explain it differently, and \
-even if it has moved to a different line. Two different defects in one file must \
-never share an id. Max 40 characters.
+- id: a short kebab-case slug naming THE DEFECT ITSELF, never your wording. \
+If the "Already reported" list below contains an id for the SAME defect, you MUST \
+reuse that exact id — do not coin a variation of it, and do not re-describe a \
+defect already listed unless it is genuinely still present. Only invent a new id \
+for a defect not already listed. Two different defects must never share an id. \
+Max 40 characters.
 - severity: blocker (data loss, security, crash), major (wrong behaviour), \
 minor (real but contained), nit (trivial). Do not inflate.
 
@@ -259,7 +261,28 @@ def build_prompt(base):
         blocks.append("## {}\n{}".format(p, fenced(text)))
 
     blocks.append("# Pre-check findings (noisy — verify before repeating)\n" + findings_context())
+    blocks.append(reported_already())
     return "\n\n".join(blocks), paths
+
+
+def reported_already():
+    """Show the model the ids already open on this PR.
+
+    Asking it to regenerate a stable id from memory does not work — it coined
+    three different slugs for one defect across three runs. Giving it the actual
+    ids makes reuse a lookup instead of a feat of consistency."""
+    if not REPO or not PR:
+        return "# Already reported on this PR\n(none)"
+    lines = []
+    for t in open_threads():
+        if "#" not in t["key"]:
+            continue  # legacy content-hash key, meaningless to the model
+        lines.append("- `{}` — {}".format(t["key"], t["gist"]))
+    if not lines:
+        return "# Already reported on this PR\n(none)"
+    return ("# Already reported on this PR\n"
+            "Reuse the exact id if you report the same defect again. Do not repeat one "
+            "that is now fixed.\n" + "\n".join(lines))
 
 
 def call_claude(prompt):
@@ -269,7 +292,7 @@ def call_claude(prompt):
     output_config = {"format": {"type": "json_schema", "schema": SCHEMA}}
     if "haiku" not in MODEL and "sonnet-4-5" not in MODEL:
         # effort is rejected outright on Haiku 4.5 / Sonnet 4.5 — a 400, not a warning.
-        output_config["effort"] = "high"
+        output_config["effort"] = EFFORT
 
     resp = client.messages.create(
         model=MODEL,
@@ -390,6 +413,13 @@ mutation($id:ID!) { resolveReviewThread(input:{threadId:$id}) {
   thread { id isResolved } } }"""
 
 
+def gist_of(body):
+    """First paragraph after the severity header, flattened to one line."""
+    paras = MARKER_RX.sub("", body or "").split("\n\n")
+    text = paras[1] if len(paras) > 1 else (paras[0] if paras else "")
+    return re.sub(r"\s+", " ", text).strip()[:160]
+
+
 def open_threads():
     """Our own unresolved threads on this PR, with GitHub's outdated flag."""
     owner, _, name = REPO.partition("/")
@@ -412,7 +442,8 @@ def open_threads():
             if NAME not in (c["body"] or "")[:200]:
                 continue
             key = content_key(c["path"], c["body"])
-        out.append({"id": t["id"], "outdated": t["isOutdated"], "key": key})
+        out.append({"id": t["id"], "outdated": t["isOutdated"], "key": key,
+                    "gist": gist_of(c["body"])})
     return out
 
 

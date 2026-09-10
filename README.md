@@ -64,7 +64,8 @@ That's the whole setup — no scripts to copy, no config file.
 | Input | Default | |
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
-| `model` | `claude-sonnet-5` | Any Anthropic model id. |
+| `model` | `claude-opus-5` | Any Anthropic model id. |
+| `effort` | `low` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
 | `pnpm-version` | `10` | Only used when linting. Better set `packageManager` in your `package.json`. |
@@ -154,16 +155,20 @@ rule would eventually hide something real. Code changing near a comment is not
 evidence either. Requiring both means a thread you never touched stays open, and a
 finding still being reported stays open even if you rewrote the line.
 
-Matching is on a **stable id**, not on text or position. Every finding carries a
-model-assigned kebab-case slug naming the defect itself — `secrets-inherit-overbroad`
-— embedded invisibly in the comment as `<!-- inq:path#slug -->`. The same defect
-produces the same id on a later run even if the explanation is worded differently
-and the code has moved to another line.
+Matching is on an **id**, not on text or position. Every finding carries a
+kebab-case slug naming the defect — embedded invisibly as `<!-- inq:path#slug -->`.
 
-This replaced hashing the comment text, which did not survive contact with reality:
-one defect produced five duplicate threads across five runs because the model
-reworded it each time and the line kept moving. Text and position both identify a
-comment; neither identifies a defect.
+Two attempts got this wrong before it worked, both for the same reason:
+
+1. **Hashing the comment text.** One defect produced five duplicate threads,
+   because the model reworded it every run and the line kept moving.
+2. **Asking the model for a stable id.** It coined three different slugs for one
+   defect — `secrets-inherit-external-repo`, `secrets-inherit-thirdparty-workflow`,
+   `secret-to-external-reusable-workflow`. Instructing a model to be consistent
+   across independent calls is a wish, not a mechanism.
+
+What works is closing the loop: the ids already open on the PR are fed back into
+the prompt, so reusing one is a lookup rather than a feat of memory.
 
 It only ever touches threads it opened itself — a human conversation is not its to
 close. Resolution needs GraphQL (`resolveReviewThread`; there is no REST
