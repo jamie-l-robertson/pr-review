@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import content_key, dot, fenced, fix_block, marker, marker_of, tally
+from review import SCHEMA, SYSTEM, content_key, dot, fenced, fix_block, marker, marker_of, tally
 
 
 def kinds(text):
@@ -129,6 +129,19 @@ def test_content_key_ignores_line_numbers():
     # Detail past the prefix does not break the match, which is what lets a
     # reworded tail still resolve its thread.
     assert content_key("a.ts", body) == content_key("a.ts", body + "\n\nmore text")
+
+
+def test_categories_match_the_documented_topics():
+    # The prompt names the topics and the schema constrains them; if they drift
+    # apart the model returns a category the enum rejects, failing the whole call.
+    enum = SCHEMA["properties"]["findings"]["items"]["properties"]["category"]["enum"]
+    assert len(enum) == len(set(enum))
+    for slug in enum:
+        assert "`{}`".format(slug) in SYSTEM, slug
+    # The four conditional topics must keep their guard.
+    for slug in ("accessibility", "usability", "testing", "ai-safety"):
+        i = SYSTEM.index("`{}`".format(slug))
+        assert "ONLY if" in SYSTEM[i:i + 200], slug
 
 
 def test_fenced_widths():

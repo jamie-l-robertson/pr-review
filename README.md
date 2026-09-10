@@ -80,6 +80,29 @@ A repo with the app in a subdirectory:
       working-directory: app
 ```
 
+## Review scope
+
+Eight topics, four of them conditional — a topic whose condition does not hold is
+skipped rather than strained at. The `category` on every finding is one of these,
+constrained by the output schema so it cannot drift.
+
+| Category | Covers | Applies |
+|---|---|---|
+| `security` | OWASP Top 10 / CWE: injection, access control, authn/authz, SSRF, XSS, CSRF, unsafe crypto | always |
+| `cybersecurity` | secrets, dependency CVEs, infra and IaC, CI/CD, supply chain, over-broad tokens | always |
+| `performance` | complexity, N+1 and unindexed queries, concurrency, memory, caching, payload size | always |
+| `accessibility` | WCAG 2.2 AA: semantics, keyboard, focus, contrast, target size, reduced motion | only if UI |
+| `usability` | destructive affordances, missing loading/empty/error states, lost work, dead ends | only if user-facing |
+| `code-quality` | correctness, design, error handling, resource cleanup, readability | always |
+| `testing` | uncovered behaviour, weak assertions, implementation-coupled tests, flakiness, over-mocking | only if tests exist |
+| `ai-safety` | prompt injection, unvalidated model output in a sink, excessive agency, unbounded spend | only if it calls an LLM |
+
+Plus `prompt-injection`, reserved for text in the diff that tries to instruct the
+reviewer (see **Untrusted input**).
+
+Scope is not a quota. Most diffs touch two or three of these, and the prompt says
+so explicitly — an invented finding costs more than a missed one.
+
 ## What blocks and what doesn't
 
 **gitleaks is a hard gate.** If the diff contains a credential the job fails there
