@@ -38,7 +38,8 @@ pin a commit SHA in **both** places:
 jobs:
   review:
     uses: jamie-l-robertson/pr-review/.github/workflows/review.yml@<sha>
-    secrets: inherit
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     with:
       tooling-ref: <sha>
 ```
