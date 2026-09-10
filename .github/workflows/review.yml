@@ -15,6 +15,10 @@ on:
         description: Name shown on the review and each inline comment.
         type: string
         default: Inquisitor
+      max-reviews-per-pr:
+        description: Stop reviewing a PR after this many reviews. 0 disables the cap.
+        type: number
+        default: 10
       lint-command:
         description: Overrides autodetection. Must write ESLint JSON to $RUNNER_TEMP/eslint.json.
         type: string
@@ -46,7 +50,10 @@ env:
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false
+    # Escape hatch: put [skip review] in the PR title to silence it.
+    if: >-
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.title, '[skip review]')
     runs-on: ubuntu-latest
     steps:
       - name: Check out the pull request
@@ -127,6 +134,7 @@ jobs:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
           MODEL: ${{ inputs.model }}
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
+          MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |
           pip install --quiet "anthropic==${ANTHROPIC_SDK_VERSION}"

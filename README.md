@@ -62,6 +62,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | `claude-sonnet-5` | Any Anthropic model id. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
+| `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
 | `lint-command` | autodetect | Override. Must write ESLint JSON to `$RUNNER_TEMP/eslint.json`. |
 | `max-context-bytes` | `400000` | Ceiling on the bundle sent to the API. |
 | `tooling-ref` | `v1` | Ref of this repo to run. |
@@ -120,6 +121,42 @@ that repo's `eslint.config.*`, its plugins and its rule overrides — a copy ven
 here would lint every repo against the wrong config and report confident nonsense.
 The rest are pinned by version so a run is reproducible; bump them here and every
 consumer picks it up on the next `v1`.
+
+## Silencing it
+
+Put `[skip review]` in the PR title. The job is skipped entirely — no checks, no
+API call. Draft PRs are skipped for the same reason.
+
+It also stops on its own after `max-reviews-per-pr` reviews, so a PR you push to
+thirty times does not cost thirty reviews, and it posts at most 20 inline comments
+per run — a review wanting to leave forty has misread the diff, not found forty bugs.
+
+## Untrusted input
+
+Everything in the bundle — diffs, file contents, commit messages, check output —
+is fenced off in the system prompt as data, not instructions. Text in a diff that
+tells the reviewer to approve the change or withhold findings is reported as a
+`blocker` finding rather than obeyed.
+
+The blast radius is small by construction: the model's only output is a fixed JSON
+schema that becomes comments. It has no tools and cannot touch the repo. Fork PRs
+get no review at all, so reaching this at all requires push access — the realistic
+vector is a dependency-update branch or vendored third-party content, not a stranger.
+
+## Measuring it
+
+`review/backtest.py` replays the reviewer over already-merged PRs and writes a
+report with a blank verdict column:
+
+```bash
+python review/backtest.py --last 10
+python review/backtest.py --last 10 --model claude-opus-5 --out backtest-opus.md
+```
+
+Each PR is reviewed inside a throwaway git worktree at that PR's head commit, so
+it sees the code as it was, not as it is now. Grade the findings real / wrong /
+trivial before trusting the tool or paying for a bigger model. A finding you would
+not have wanted to see is a cost, not a neutral.
 
 ## Naming
 
