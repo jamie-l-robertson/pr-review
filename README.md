@@ -28,7 +28,7 @@ That's the whole setup — no scripts to copy, no config file.
 | Input | Default | |
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
-| `model` | `claude-opus-5` | Any Anthropic model id. |
+| `model` | `claude-haiku-4-5` | Any Anthropic model id. Haiku is 200K context; the 400KB default budget fits comfortably. |
 | `lint-command` | autodetect | Override. Must write ESLint JSON to `$RUNNER_TEMP/eslint.json`. |
 | `max-context-bytes` | `400000` | Ceiling on the bundle sent to the API. |
 | `tooling-ref` | `v1` | Ref of this repo to run. |
@@ -70,6 +70,23 @@ Unknown extensions contribute nothing rather than failing.
 `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md` from the repo root and
 `working-directory` go into the system prompt verbatim, so the reviewer enforces
 the rules the repo already documents. Nothing to configure, and no rules invented.
+
+## Where the tools come from
+
+Nothing is vendored into this repo, deliberately:
+
+| Tool | Source | Pinned |
+|---|---|---|
+| gitleaks | binary from its GitHub release | `GITLEAKS_VERSION` in the workflow |
+| semgrep | pip, rules pulled from the public registry | `SEMGREP_VERSION` |
+| ESLint | **the consuming repo's own `node_modules`** | that repo's lockfile |
+| anthropic SDK | pip | `ANTHROPIC_SDK_VERSION` |
+
+ESLint is the one that matters. It has to come from the consumer, because it needs
+that repo's `eslint.config.*`, its plugins and its rule overrides — a copy vendored
+here would lint every repo against the wrong config and report confident nonsense.
+The rest are pinned by version so a run is reproducible; bump them here and every
+consumer picks it up on the next `v1`.
 
 ## Limits
 

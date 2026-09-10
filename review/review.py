@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
-MODEL = os.environ.get("MODEL") or "claude-opus-5"
+MODEL = os.environ.get("MODEL") or "claude-haiku-4-5"
 BUDGET = int(os.environ.get("MAX_CONTEXT_BYTES") or 400_000)
 WORKDIR = os.environ.get("WORKING_DIRECTORY", ".")
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
@@ -214,11 +214,16 @@ def call_claude(prompt):
     import anthropic
 
     client = anthropic.Anthropic()
+    output_config = {"format": {"type": "json_schema", "schema": SCHEMA}}
+    if "haiku" not in MODEL and "sonnet-4-5" not in MODEL:
+        # effort is rejected outright on Haiku 4.5 / Sonnet 4.5 — a 400, not a warning.
+        output_config["effort"] = "high"
+
     resp = client.messages.create(
         model=MODEL,
         max_tokens=16000,
         system=SYSTEM + "\n\n" + house_rules(),
-        output_config={"effort": "high", "format": {"type": "json_schema", "schema": SCHEMA}},
+        output_config=output_config,
         messages=[{"role": "user", "content": prompt}],
     )
     if resp.stop_reason == "refusal":
