@@ -8,9 +8,9 @@ on:
         type: string
         default: "."
       model:
-        description: Anthropic model id. Haiku's 200K context caps max-context-bytes near 700000.
+        description: Anthropic model id.
         type: string
-        default: claude-haiku-4-5
+        default: claude-sonnet-5
       lint-command:
         description: Overrides autodetection. Must write ESLint JSON to $RUNNER_TEMP/eslint.json.
         type: string

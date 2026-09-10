@@ -28,7 +28,7 @@ That's the whole setup — no scripts to copy, no config file.
 | Input | Default | |
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
-| `model` | `claude-haiku-4-5` | Any Anthropic model id. Haiku is 200K context; the 400KB default budget fits comfortably. |
+| `model` | `claude-sonnet-5` | Any Anthropic model id. |
 | `lint-command` | autodetect | Override. Must write ESLint JSON to `$RUNNER_TEMP/eslint.json`. |
 | `max-context-bytes` | `400000` | Ceiling on the bundle sent to the API. |
 | `tooling-ref` | `v1` | Ref of this repo to run. |

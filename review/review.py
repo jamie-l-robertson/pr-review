@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
-MODEL = os.environ.get("MODEL") or "claude-haiku-4-5"
+MODEL = os.environ.get("MODEL") or "claude-sonnet-5"
 BUDGET = int(os.environ.get("MAX_CONTEXT_BYTES") or 400_000)
 WORKDIR = os.environ.get("WORKING_DIRECTORY", ".")
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
