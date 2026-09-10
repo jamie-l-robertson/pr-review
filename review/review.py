@@ -517,12 +517,18 @@ def resolve_stale(current_keys):
             gh("api", "graphql", "-f", "query=" + RESOLVE_M, "-F", "id=" + t["id"])
             closed += 1
         except RuntimeError as e:
-            hint = ""
+            print("could not resolve {}: {}".format(t["id"], e), file=sys.stderr)
             if "not accessible by integration" in str(e):
-                hint = (" — the default GITHUB_TOKEN cannot resolve review threads "
-                        "whatever permissions it is granted. Run the job under a "
-                        "GitHub App token or a PAT to enable this.")
-            print("could not resolve {}: {}{}".format(t["id"][:12], e, hint), file=sys.stderr)
+                # GitHub names the permission it wanted in a response header.
+                # Ask for it rather than guessing which grant is missing.
+                probe = subprocess.run(
+                    ("gh", "api", "-i", "graphql", "-f", "query=" + RESOLVE_M,
+                     "-F", "id=" + t["id"]),
+                    capture_output=True, text=True)
+                for line in (probe.stdout + probe.stderr).splitlines():
+                    if line.lower().startswith(("x-accepted-github-permissions",
+                                                "x-oauth-scopes", "x-accepted-oauth-scopes")):
+                        print("  {}".format(line.strip()), file=sys.stderr)
             break  # a permissions problem will not fix itself on the next thread
     if closed:
         print("resolved {} stale thread(s)".format(closed), file=sys.stderr)
