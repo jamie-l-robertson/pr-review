@@ -16,7 +16,7 @@ on:
           low | medium | high | xhigh | max. Ignored on models that reject it
           (Haiku 4.5, Sonnet 4.5).
         type: string
-        default: medium
+        default: xhigh
       reviewer-name:
         description: Name shown on the review and each inline comment.
         type: string

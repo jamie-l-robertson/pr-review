@@ -9,8 +9,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import (SCHEMA, SYSTEM, all_in_one, content_key, dot, fenced,
-                    fix_block, marker, marker_of, tally)
+from review import (SCHEMA, SYSTEM, all_in_one, content_key, coverage_note, dot,
+                    fenced, fix_block, marker, marker_of, tally)
 
 
 def kinds(text):
@@ -155,6 +155,22 @@ def test_one_shot_covers_every_finding():
     assert "fix all 3 in one go" in out
     assert out.count("Steps:") == 1, "steps should appear once, not per finding"
     assert all_in_one([]) == ""
+
+
+def test_coverage_note_flags_skipped_and_missing_files():
+    paths = ["a.ts", "b.ts", "c.ts"]
+    clean = {"files_reviewed": [{"path": p, "verdict": "clean"} for p in paths]}
+    assert coverage_note(clean, paths) == ""
+    # Explicitly skipped.
+    skipped = {"files_reviewed": [{"path": "a.ts", "verdict": "not-reviewed"},
+                                 {"path": "b.ts", "verdict": "clean"},
+                                 {"path": "c.ts", "verdict": "clean"}]}
+    assert "a.ts" in coverage_note(skipped, paths)
+    # Silently omitted from the ledger entirely — the real failure mode.
+    partial = {"files_reviewed": [{"path": "a.ts", "verdict": "clean"}]}
+    note = coverage_note(partial, paths)
+    assert "b.ts" in note and "c.ts" in note
+    assert "2 file(s) not reviewed" in note
 
 
 def test_categories_match_the_documented_topics():

@@ -65,7 +65,7 @@ That's the whole setup — no scripts to copy, no config file.
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | `claude-opus-5` | Any Anthropic model id. |
-| `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
+| `effort` | `xhigh` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
 | `pnpm-version` | `10` | Only used when linting. Better set `packageManager` in your `package.json`. |
@@ -79,6 +79,29 @@ A repo with the app in a subdirectory:
     with:
       working-directory: app
 ```
+
+## Thoroughness
+
+A single call is not exhaustive by nature, and the symptom is findings arriving on
+the second or third push that were sitting in the first diff all along. Two things
+push against that without paying for a second pass:
+
+**Effort defaults to `xhigh`.** Cost here is ~50:1 input to output — a 190k-token
+bundle against a few hundred tokens of findings — so a second full pass roughly
+doubles the bill while more effort inflates only the tiny output side, around 10%.
+Effort is the cheap lever; a second pass is not.
+
+**Every changed file gets a verdict.** The output schema requires one entry per
+changed file: `clean`, `defects-reported`, or `not-reviewed`. A file cannot be
+silently skipped, because the ledger has to account for it, and `not-reviewed` is
+explicitly allowed so the honest answer is available and never forced into a false
+`clean`. Anything skipped, or missing from the ledger entirely, is listed on the
+review as **not reviewed — treat as unknown**.
+
+If findings still trickle in across pushes after that, the next lever is a genuine
+second pass over the same diff, and it costs roughly double. Measure with
+`backtest.py --at <sha> --base <sha>` against a diff whose answer you already know
+before paying for it.
 
 ## Review scope
 

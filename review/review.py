@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
 MODEL = os.environ.get("MODEL") or "claude-opus-5"
-EFFORT = os.environ.get("EFFORT") or "medium"
+EFFORT = os.environ.get("EFFORT") or "xhigh"
 NAME = os.environ.get("REVIEWER_NAME") or "Inquisitor"
 MAX_REVIEWS = int(os.environ.get("MAX_REVIEWS_PER_PR") or 10)
 NO_POST = bool(os.environ.get("NO_POST"))
@@ -51,6 +51,19 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "summary": {"type": "string"},
+        "files_reviewed": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "verdict": {"type": "string",
+                                "enum": ["clean", "defects-reported", "not-reviewed"]},
+                },
+                "required": ["path", "verdict"],
+                "additionalProperties": False,
+            },
+        },
         "findings": {
             "type": "array",
             "items": {
@@ -73,7 +86,7 @@ SCHEMA = {
             },
         },
     },
-    "required": ["summary", "findings"],
+    "required": ["summary", "findings", "files_reviewed"],
     "additionalProperties": False,
 }
 
@@ -145,6 +158,12 @@ one a reader would look under, not the one that sounds most serious.
 - A topic being in scope is not a quota. Most diffs touch two or three of these; \
 returning nothing for the rest is the correct outcome. Do not invent findings to \
 fill topics.
+- files_reviewed: ONE ENTRY PER CHANGED FILE, no exceptions — the list is given \
+below and your entries must match it exactly. `clean` means you read it and found \
+nothing. `not-reviewed` means you did not genuinely examine it; that is a permitted \
+and useful answer, and far better than calling a file clean you skimmed. Never mark \
+a file clean to complete the list. This is a coverage record, not a target: a long \
+run of `clean` is the expected result on most diffs.
 - COVERAGE IS NOT OPTIONAL. Work through the changed files listed below one at a \
 time and finish each before moving on. Every changed file you do not report on is \
 a file you are asserting is correct — do not skim one because you already found \
@@ -616,6 +635,21 @@ def resolve_stale(current_keys):
         print("resolved {} stale thread(s)".format(closed), file=sys.stderr)
 
 
+def coverage_note(result, paths):
+    """Say which files went unreviewed. Silence about a file is the failure mode
+    that makes a second run find things the first one missed."""
+    seen = {e["path"]: e["verdict"] for e in result.get("files_reviewed", [])}
+    skipped = sorted(p for p, v in seen.items() if v == "not-reviewed")
+    absent = sorted(p for p in paths if p not in seen)
+    gaps = skipped + absent
+    if not gaps:
+        return ""
+    print("coverage gap: {}".format(", ".join(gaps)), file=sys.stderr)
+    return ("\n\n<details>\n<summary>⚠️ {} file(s) not reviewed</summary>\n\n"
+            "Not examined this run, so treat them as unknown rather than clean:\n{}\n"
+            "</details>").format(len(gaps), "\n".join("- `{}`".format(p) for p in gaps))
+
+
 def post(result, valid):
     seen = existing_fingerprints()
     comments, orphans, labelled = [], [], []
@@ -637,6 +671,7 @@ def post(result, valid):
         headline = "✅ **Nothing to report.** {} file(s) reviewed against all eight " \
                    "topics; no defects found.\n\n".format(len(valid) or 0)
     body = "### {}\n\n{}{}".format(NAME, headline, result["summary"])
+    body += coverage_note(result, sorted(valid))
     if orphans:
         body += "\n\n<details><summary>Findings outside the diff ({})</summary>\n\n{}\n</details>".format(
             len(orphans), "\n".join(orphans))
