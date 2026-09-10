@@ -226,6 +226,23 @@ schema that becomes comments. It has no tools and cannot touch the repo. Fork PR
 get no review at all, so reaching this at all requires push access — the realistic
 vector is a dependency-update branch or vendored third-party content, not a stranger.
 
+## Caching
+
+The system block (prompt + your `AGENTS.md`) carries a `cache_control` breakpoint.
+It is byte-identical on every run in a repo, so it is the only part of the request
+that reliably repays the 1.25x write cost. That is a few percent of a ~50k-token
+request — real, but small.
+
+The larger prize is the ~43k tokens of file content, near-identical between two
+runs on the same PR. It does **not** cache today, because caching is a prefix match
+and the volatile diff is sent first. Reordering so stable content precedes the diff
+would make most of that cacheable on a re-push within the TTL, cutting a second
+run's input cost by roughly 80%. It also changes what the model reads first, which
+can change review quality — so measure before assuming it is free.
+
+Every run logs `cache write/read`. If reads stay at zero across consecutive pushes,
+the breakpoint is costing you 25% on that block and should be removed.
+
 ## Measuring it
 
 `review/backtest.py` replays the reviewer over already-merged PRs and writes a

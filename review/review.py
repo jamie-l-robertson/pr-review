@@ -346,14 +346,23 @@ def call_claude(prompt):
     resp = client.messages.create(
         model=MODEL,
         max_tokens=16000,
-        system=SYSTEM + "\n\n" + house_rules(),
+        # The system block is byte-identical on every run in a repo, so it is the
+        # one part of the request worth a cache breakpoint. Everything after it
+        # (the diff, the file contents) changes per push and would only pay the
+        # 1.25x write cost. See the note in the README before extending this.
+        system=[{"type": "text", "text": SYSTEM + "\n\n" + house_rules(),
+                 "cache_control": {"type": "ephemeral"}}],
         output_config=output_config,
         messages=[{"role": "user", "content": prompt}],
     )
     if resp.stop_reason == "refusal":
         raise SystemExit("Claude declined to review this diff: {}".format(resp.stop_details))
     text = next(b.text for b in resp.content if b.type == "text")
-    print("tokens in/out: {}/{}".format(resp.usage.input_tokens, resp.usage.output_tokens), file=sys.stderr)
+    u = resp.usage
+    print("tokens in/out: {}/{}  cache write/read: {}/{}".format(
+        u.input_tokens, u.output_tokens,
+        getattr(u, "cache_creation_input_tokens", 0) or 0,
+        getattr(u, "cache_read_input_tokens", 0) or 0), file=sys.stderr)
     return json.loads(text)
 
 
