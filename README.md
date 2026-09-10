@@ -150,8 +150,16 @@ rule would eventually hide something real. Code changing near a comment is not
 evidence either. Requiring both means a thread you never touched stays open, and a
 finding still being reported stays open even if you rewrote the line.
 
-Matching is on content, not line number: an outdated comment reports `line: null`,
-and a finding that survives an edit rarely sits on the same line anyway.
+Matching is on a **stable id**, not on text or position. Every finding carries a
+model-assigned kebab-case slug naming the defect itself — `secrets-inherit-overbroad`
+— embedded invisibly in the comment as `<!-- inq:path#slug -->`. The same defect
+produces the same id on a later run even if the explanation is worded differently
+and the code has moved to another line.
+
+This replaced hashing the comment text, which did not survive contact with reality:
+one defect produced five duplicate threads across five runs because the model
+reworded it each time and the line kept moving. Text and position both identify a
+comment; neither identifies a defect.
 
 It only ever touches threads it opened itself — a human conversation is not its to
 close. Resolution needs GraphQL (`resolveReviewThread`; there is no REST

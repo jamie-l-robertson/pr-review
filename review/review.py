@@ -55,13 +55,14 @@ SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
+                    "id": {"type": "string"},
                     "path": {"type": "string"},
                     "line": {"type": "integer"},
                     "severity": {"type": "string", "enum": ["blocker", "major", "minor", "nit"]},
                     "category": {"type": "string"},
                     "body": {"type": "string"},
                 },
-                "required": ["path", "line", "severity", "category", "body"],
+                "required": ["id", "path", "line", "severity", "category", "body"],
                 "additionalProperties": False,
             },
         },
@@ -79,10 +80,18 @@ Rules:
 for context, but a finding anchored outside the diff cannot be posted.
 - No praise, no summary of what the code does, no style opinions the project's own \
 conventions do not state. If the change is fine, return an empty findings array.
-- One finding per real problem. Say what breaks and under what input, then the fix.
+- One finding per real problem. Say what breaks, under what input, and the fix — \
+in at most three sentences. Do not restate what the code does, do not preamble, \
+do not hedge. A reader should get it in one glance; if it needs more than three \
+sentences it is probably two findings or a guess.
 - Pre-check output (lint/SAST/PII) is included below. It is NOISY. Verify each item \
 against the actual code before repeating it, and silently drop false positives — \
 in particular, fictional place and character names are not personal data.
+- id: a short kebab-case slug naming THE DEFECT ITSELF, never your wording — \
+e.g. `secrets-inherit-overbroad`, `unbounded-loop-on-empty-input`. The same defect \
+must produce the same id on a later run even if you explain it differently, and \
+even if it has moved to a different line. Two different defects in one file must \
+never share an id. Max 40 characters.
 - severity: blocker (data loss, security, crash), major (wrong behaviour), \
 minor (real but contained), nit (trivial). Do not inflate.
 
@@ -314,6 +323,22 @@ def fix_block(f):
         fenced(prompt, "text"))
 
 
+MARKER_RX = re.compile(r"<!-- inq:([^\s>]+) -->")
+
+
+def marker(f):
+    """Stable identity, embedded invisibly in the comment. Hashing the prose
+    does not work: the model rewords the same defect every run, and the line
+    moves as the file is edited, so neither text nor position identifies it."""
+    slug = re.sub(r"[^a-z0-9-]", "", (f.get("id") or "").lower().strip())[:40] or "unnamed"
+    return "{}#{}".format(f["path"], slug)
+
+
+def marker_of(body):
+    m = MARKER_RX.search(body or "")
+    return m.group(1) if m else None
+
+
 def content_key(path, body):
     """Line-independent identity for a finding. An outdated comment reports
     line: null, and a finding that survived an edit rarely sits on the same
@@ -331,7 +356,10 @@ def existing_fingerprints():
         raw = gh("api", "repos/{}/pulls/{}/comments".format(REPO, PR), "--paginate")
     except RuntimeError:
         return set()
-    return {fingerprint(c["path"], c.get("line") or 0, c["body"]) for c in json.loads(raw)}
+    out = set()
+    for c in json.loads(raw):
+        out.add(marker_of(c["body"]) or content_key(c["path"], c["body"]))
+    return out
 
 
 def review_count():
@@ -376,10 +404,15 @@ def open_threads():
     for t in nodes:
         c = (t["comments"]["nodes"] or [None])[0]
         # Only ours. Someone else's conversation is not ours to close.
-        if not c or NAME not in (c["body"] or "")[:80] or t["isResolved"]:
+        if not c or t["isResolved"]:
             continue
-        out.append({"id": t["id"], "outdated": t["isOutdated"],
-                    "key": content_key(c["path"], c["body"])})
+        key = marker_of(c["body"])
+        if key is None:
+            # Posted before markers existed. Still ours if it carries our name.
+            if NAME not in (c["body"] or "")[:200]:
+                continue
+            key = content_key(c["path"], c["body"])
+        out.append({"id": t["id"], "outdated": t["isOutdated"], "key": key})
     return out
 
 
@@ -406,10 +439,11 @@ def post(result, valid):
     comments, orphans, labelled = [], [], []
     for f in result["findings"]:
         label = "{} **{}** · {} · {}\n\n{}".format(
-            dot(f["severity"]), NAME, f["severity"], f["category"], f["body"]) + fix_block(f)
+            dot(f["severity"]), NAME, f["severity"], f["category"], f["body"]
+        ) + fix_block(f) + "\n\n<!-- inq:{} -->".format(marker(f))
         labelled.append((f, label))
         if f["line"] in valid.get(f["path"], ()):
-            if fingerprint(f["path"], f["line"], label) not in seen:
+            if marker(f) not in seen:
                 comments.append({"path": f["path"], "line": f["line"], "side": "RIGHT", "body": label})
         else:
             orphans.append("- `{}:{}` — {}".format(f["path"], f["line"], label.replace("\n\n", " ")))
@@ -439,7 +473,7 @@ def post(result, valid):
         payload["body"] = body + "\n\n_(Inline anchoring failed; findings listed above.)_"
         gh("api", path, "--input", "-", stdin=json.dumps(payload))
     print("posted {} inline, {} in summary".format(len(comments), len(orphans)), file=sys.stderr)
-    resolve_stale({content_key(f["path"], lbl) for f, lbl in labelled})
+    resolve_stale({marker(f) for f, _ in labelled})
 
 
 def main():

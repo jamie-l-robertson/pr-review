@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import content_key, dot, fenced, fix_block, tally
+from review import content_key, dot, fenced, fix_block, marker, marker_of, tally
 
 
 def kinds(text):
@@ -88,6 +88,30 @@ def test_severity_dots():
     assert tally([]) == ""
     assert dot("weird") == "⚪"
     assert len({dot(s) for s in ("blocker", "major", "minor", "nit")}) == 4
+
+
+def test_marker_is_stable_across_rewording_and_movement():
+    # The failure this exists to prevent: five threads for one defect, because
+    # the model reworded it each run and the line moved as the file was edited.
+    a = {"id": "secrets-inherit-overbroad", "path": "wf.yml", "line": 11,
+         "body": "Forwards every secret."}
+    b = dict(a, line=47, body="Passes all secrets wholesale.")
+    assert marker(a) == marker(b)
+    # Different defect, same file.
+    assert marker(a) != marker(dict(a, id="mutable-tag-pin"))
+    # Same defect, different file.
+    assert marker(a) != marker(dict(a, path="other.yml"))
+    # Model noise in the slug must not create a new identity.
+    assert marker(dict(a, id="  Secrets-Inherit-Overbroad  ")) == marker(a)
+    assert marker(dict(a, id="")) == "wf.yml#unnamed"
+
+
+def test_marker_round_trips_through_a_comment_body():
+    f = {"id": "unbounded-loop", "path": "a.ts", "line": 3, "severity": "nit",
+         "category": "perf", "body": "Loops forever on empty input."}
+    body = "text" + fix_block(f) + "\n\n<!-- inq:{} -->".format(marker(f))
+    assert marker_of(body) == "a.ts#unbounded-loop"
+    assert marker_of("a comment with no marker") is None
 
 
 def test_content_key_ignores_line_numbers():
