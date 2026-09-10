@@ -348,10 +348,14 @@ def call_claude(prompt):
         max_tokens=16000,
         # The system block is byte-identical on every run in a repo, so it is the
         # one part of the request worth a cache breakpoint. Everything after it
-        # (the diff, the file contents) changes per push and would only pay the
-        # 1.25x write cost. See the note in the README before extending this.
+        # (the diff, the file contents) changes per push.
+        # 1h TTL, not the 5m default: runs on a PR land ten to fifteen minutes
+        # apart, so every 5m write expired before the next run could read it —
+        # observed as cache write/read 2907/0 on every run. A 1h write costs 2x
+        # instead of 1.25x, so this is only worth it if reads now land; the
+        # counters below are logged for exactly that reason.
         system=[{"type": "text", "text": SYSTEM + "\n\n" + house_rules(),
-                 "cache_control": {"type": "ephemeral"}}],
+                 "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
         output_config=output_config,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -519,16 +523,9 @@ def resolve_stale(current_keys):
         except RuntimeError as e:
             print("could not resolve {}: {}".format(t["id"], e), file=sys.stderr)
             if "not accessible by integration" in str(e):
-                # GitHub names the permission it wanted in a response header.
-                # Ask for it rather than guessing which grant is missing.
-                probe = subprocess.run(
-                    ("gh", "api", "-i", "graphql", "-f", "query=" + RESOLVE_M,
-                     "-F", "id=" + t["id"]),
-                    capture_output=True, text=True)
-                for line in (probe.stdout + probe.stderr).splitlines():
-                    if line.lower().startswith(("x-accepted-github-permissions",
-                                                "x-oauth-scopes", "x-accepted-oauth-scopes")):
-                        print("  {}".format(line.strip()), file=sys.stderr)
+                print("  the token cannot resolve threads. A GitHub App needs "
+                      "Pull requests: write and Contents: write; the default "
+                      "GITHUB_TOKEN cannot do it at all.", file=sys.stderr)
             break  # a permissions problem will not fix itself on the next thread
     if closed:
         print("resolved {} stale thread(s)".format(closed), file=sys.stderr)
