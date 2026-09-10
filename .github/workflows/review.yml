@@ -146,7 +146,7 @@ jobs:
         run: |
           pip install --quiet "semgrep==${SEMGREP_VERSION}"
           semgrep scan ${{ steps.detect.outputs.semgrep_configs }} \
-            --json -o "$RUNNER_TEMP/semgrep.json" --quiet --error=false
+            --json -o "$RUNNER_TEMP/semgrep.json" --quiet
 
       - name: PII scan
         continue-on-error: true
@@ -168,6 +168,8 @@ jobs:
           MODEL: ${{ inputs.model }}
           EFFORT: ${{ inputs.effort }}
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
+          RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
+          RAN_SEMGREP: ${{ steps.detect.outputs.semgrep_configs }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |

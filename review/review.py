@@ -257,13 +257,29 @@ def house_rules():
 
 
 def findings_context():
-    """Whatever the pre-check steps managed to write. Missing == that check was skipped."""
+    """Whatever the pre-check steps managed to write.
+
+    A check that was expected to run but wrote nothing is reported explicitly.
+    semgrep failed on every run for weeks behind continue-on-error, and nothing
+    said so — an absent file read exactly like a clean scan."""
     tmp = os.environ.get("RUNNER_TEMP", "/tmp")
-    out = []
-    for label, name in (("ESLint", "eslint.json"), ("Semgrep", "semgrep.json"), ("PII scan", "pii.json")):
+    expected = {
+        "ESLint": ("eslint.json", os.environ.get("RAN_ESLINT") == "true"),
+        "Semgrep": ("semgrep.json", bool(os.environ.get("RAN_SEMGREP"))),
+        "PII scan": ("pii.json", True),
+    }
+    out, missing = [], []
+    for label, (name, was_expected) in expected.items():
         text = read(os.path.join(tmp, name), 60_000)
         if text and text.strip() not in ("", "[]", "{}"):
             out.append("## {} output\n{}".format(label, fenced(text, "json")))
+        elif was_expected and text is None:
+            missing.append(label)
+    if missing:
+        warn = "**{} produced no output — treat that as unknown, not clean.**".format(
+            " and ".join(missing))
+        print("WARNING: no output from {}".format(", ".join(missing)), file=sys.stderr)
+        out.append(warn)
     return "\n\n".join(out) if out else "(No pre-check findings — the checks passed or were skipped.)"
 
 
