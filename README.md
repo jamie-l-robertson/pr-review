@@ -194,8 +194,15 @@ What works is closing the loop: the ids already open on the PR are fed back into
 the prompt, so reusing one is a lookup rather than a feat of memory.
 
 It only ever touches threads it opened itself — a human conversation is not its to
-close. Resolution needs GraphQL (`resolveReviewThread`; there is no REST
-equivalent), which the `pull-requests: write` grant already covers.
+close.
+
+**This needs a token the default one cannot provide.** Resolution is GraphQL-only
+(`resolveReviewThread`; there is no REST equivalent), and `GITHUB_TOKEN` is refused
+with `Resource not accessible by integration` no matter what permissions it is
+granted. Run the job under a GitHub App token (`actions/create-github-app-token`)
+or a PAT to enable it. Without one, everything else still works — the reviewer logs
+the refusal once per run and leaves the threads open, and GitHub still collapses
+them as **Outdated** on its own.
 
 ## Silencing it
 
