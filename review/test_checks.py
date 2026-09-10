@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import fenced, fix_block
+from review import dot, fenced, fix_block, tally
 
 
 def kinds(text):
@@ -79,6 +79,15 @@ def test_fix_block_survives_fences_in_the_body():
     assert "````text" in out, "wrapper must be wider than the fence it contains"
     assert out.rstrip().endswith("</details>")
     assert "Use ts instead." in out
+
+
+def test_severity_dots():
+    # Worst first, zeroes omitted, and an off-schema severity still renders.
+    fs = [{"severity": "nit"}, {"severity": "blocker"}, {"severity": "nit"}]
+    assert tally(fs) == "🔴 1 blocker · 🟢 2 nit"
+    assert tally([]) == ""
+    assert dot("weird") == "⚪"
+    assert len({dot(s) for s in ("blocker", "major", "minor", "nit")}) == 4
 
 
 def test_fenced_widths():

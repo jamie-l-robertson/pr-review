@@ -22,6 +22,21 @@ NO_POST = bool(os.environ.get("NO_POST"))
 # A run that wants to leave 40 comments has misunderstood the diff, not found
 # 40 bugs. Cap it and say so rather than burying the author.
 MAX_COMMENTS = 20
+
+# GitHub comments take no arbitrary colour, but these render everywhere the
+# comment does — web, mobile, email notifications — with no external image.
+SEVERITY_DOT = {"blocker": "🔴", "major": "🟠", "minor": "🟡", "nit": "🟢"}
+SEVERITY_ORDER = ("blocker", "major", "minor", "nit")
+
+
+def dot(severity):
+    return SEVERITY_DOT.get(severity, "⚪")
+
+
+def tally(findings):
+    """Severity counts, worst first, zeroes omitted."""
+    counts = [(s, sum(1 for f in findings if f["severity"] == s)) for s in SEVERITY_ORDER]
+    return " · ".join("{} {} {}".format(dot(s), n, s) for s, n in counts if n)
 BUDGET = int(os.environ.get("MAX_CONTEXT_BYTES") or 400_000)
 WORKDIR = os.environ.get("WORKING_DIRECTORY", ".")
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
@@ -325,15 +340,17 @@ def post(result, valid):
     seen = existing_fingerprints()
     comments, orphans = [], []
     for f in result["findings"]:
-        label = "**{}** · {} · {}\n\n{}".format(
-            NAME, f["severity"], f["category"], f["body"]) + fix_block(f)
+        label = "{} **{}** · {} · {}\n\n{}".format(
+            dot(f["severity"]), NAME, f["severity"], f["category"], f["body"]) + fix_block(f)
         if f["line"] in valid.get(f["path"], ()):
             if fingerprint(f["path"], f["line"], label) not in seen:
                 comments.append({"path": f["path"], "line": f["line"], "side": "RIGHT", "body": label})
         else:
             orphans.append("- `{}:{}` — {}".format(f["path"], f["line"], label.replace("\n\n", " ")))
 
-    body = "### {}\n\n{}".format(NAME, result["summary"])
+    counts = tally(result["findings"])
+    body = "### {}\n\n{}{}".format(
+        NAME, (counts + "\n\n") if counts else "", result["summary"])
     if orphans:
         body += "\n\n<details><summary>Findings outside the diff ({})</summary>\n\n{}\n</details>".format(
             len(orphans), "\n".join(orphans))

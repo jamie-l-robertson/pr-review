@@ -123,6 +123,19 @@ here would lint every repo against the wrong config and report confident nonsens
 The rest are pinned by version so a run is reproducible; bump them here and every
 consumer picks it up on the next `v1`.
 
+## Severities
+
+| | | |
+|---|---|---|
+| 🔴 | `blocker` | data loss, security, crash |
+| 🟠 | `major` | wrong behaviour |
+| 🟡 | `minor` | real but contained |
+| 🟢 | `nit` | trivial |
+
+The dot leads every inline comment, and the review body opens with a tally
+(worst first, zeroes omitted) so the shape of a review is legible before you
+read a word of it.
+
 ## Silencing it
 
 Put `[skip review]` in the PR title. The job is skipped entirely — no checks, no
