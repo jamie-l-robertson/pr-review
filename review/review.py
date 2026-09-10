@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
 MODEL = os.environ.get("MODEL") or "claude-sonnet-5"
+NAME = os.environ.get("REVIEWER_NAME") or "Inquisitor"
 BUDGET = int(os.environ.get("MAX_CONTEXT_BYTES") or 400_000)
 WORKDIR = os.environ.get("WORKING_DIRECTORY", ".")
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
@@ -257,17 +258,18 @@ def post(result, valid):
     seen = existing_fingerprints()
     comments, orphans = [], []
     for f in result["findings"]:
-        label = "**{}** · {}\n\n{}".format(f["severity"], f["category"], f["body"])
+        label = "**{}** · {} · {}\n\n{}".format(NAME, f["severity"], f["category"], f["body"])
         if f["line"] in valid.get(f["path"], ()):
             if fingerprint(f["path"], f["line"], label) not in seen:
                 comments.append({"path": f["path"], "line": f["line"], "side": "RIGHT", "body": label})
         else:
             orphans.append("- `{}:{}` — {}".format(f["path"], f["line"], label.replace("\n\n", " ")))
 
-    body = result["summary"]
+    body = "### {}\n\n{}".format(NAME, result["summary"])
     if orphans:
         body += "\n\n<details><summary>Findings outside the diff ({})</summary>\n\n{}\n</details>".format(
             len(orphans), "\n".join(orphans))
+    body += "\n\n<sub>{} · {} · {} finding(s)</sub>".format(NAME, MODEL, len(result["findings"]))
     payload = {"event": "COMMENT", "body": body, "comments": comments}
 
     path = "repos/{}/pulls/{}/reviews".format(REPO, PR)

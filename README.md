@@ -61,6 +61,7 @@ That's the whole setup — no scripts to copy, no config file.
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | `claude-sonnet-5` | Any Anthropic model id. |
+| `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `lint-command` | autodetect | Override. Must write ESLint JSON to `$RUNNER_TEMP/eslint.json`. |
 | `max-context-bytes` | `400000` | Ceiling on the bundle sent to the API. |
 | `tooling-ref` | `v1` | Ref of this repo to run. |
@@ -119,6 +120,14 @@ that repo's `eslint.config.*`, its plugins and its rule overrides — a copy ven
 here would lint every repo against the wrong config and report confident nonsense.
 The rest are pinned by version so a run is reproducible; bump them here and every
 consumer picks it up on the next `v1`.
+
+## Naming
+
+`reviewer-name` brands the review body and every inline comment. The comment
+**author** stays `github-actions[bot]` — that identity is fixed for the default
+token and cannot be renamed. Changing it means running the job under a GitHub App
+and minting a token with `actions/create-github-app-token`, at which point comments
+post as `<YourApp>[bot]` with its own avatar. Not wired up here.
 
 ## Limits
 

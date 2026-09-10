@@ -11,6 +11,10 @@ on:
         description: Anthropic model id.
         type: string
         default: claude-sonnet-5
+      reviewer-name:
+        description: Name shown on the review and each inline comment.
+        type: string
+        default: Inquisitor
       lint-command:
         description: Overrides autodetection. Must write ESLint JSON to $RUNNER_TEMP/eslint.json.
         type: string
@@ -122,6 +126,7 @@ jobs:
           BASE_SHA: ${{ steps.range.outputs.base }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
           MODEL: ${{ inputs.model }}
+          REVIEWER_NAME: ${{ inputs.reviewer-name }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |
           pip install --quiet "anthropic==${ANTHROPIC_SDK_VERSION}"
