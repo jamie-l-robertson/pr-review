@@ -28,6 +28,25 @@ jobs:
     secrets: inherit
 ```
 
+### Pin to a commit
+
+`v1` is a **moving tag** — it is repointed whenever this repo changes, so anything
+tracking it can change without a commit in your repo. For anything you care about,
+pin a commit SHA in **both** places:
+
+```yaml
+jobs:
+  review:
+    uses: jamie-l-robertson/pr-review/.github/workflows/review.yml@<sha>
+    secrets: inherit
+    with:
+      tooling-ref: <sha>
+```
+
+Both, because `uses:` pins the workflow while `tooling-ref` pins the scripts that
+workflow checks out. Pinning only the first leaves `review.py` and the check
+scripts floating on the tag, which is most of what actually runs.
+
 `ANTHROPIC_API_KEY` needs to exist as a secret on the repo or the account:
 
 ```bash
