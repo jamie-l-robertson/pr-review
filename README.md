@@ -427,10 +427,20 @@ in the same commit.
 
 ## Caching
 
-The system block (prompt + your `AGENTS.md`) carries a `cache_control` breakpoint.
-It is byte-identical on every run in a repo, so it is the only part of the request
-that reliably repays the 1.25x write cost. That is a few percent of a ~50k-token
-request — real, but small.
+Two breakpoints, with deliberately different lifetimes:
+
+| Block | TTL | Why |
+|---|---|---|
+| System prompt + your `AGENTS.md` | **1h** | Byte-identical on every run and every PR in the repo, so an hour of reuse repays the 2x write. |
+| Diff, changed files, check output | **5m** | Diff-specific: the next push changes it, so it can never be reused by a later run. It only has to survive this loop, whose turns are seconds apart. 1.25x to write instead of 2x. |
+
+Tool definitions need no breakpoint of their own — everything before the system
+breakpoint is already in the cached prefix.
+
+Nothing else is worth caching. The rest of a request is derived from the diff, and
+the diff is what changed.
+
+### Where the tokens actually go
 
 The larger prize is the ~43k tokens of file content, near-identical between two
 runs on the same PR. It does **not** cache today, because caching is a prefix match

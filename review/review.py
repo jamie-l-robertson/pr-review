@@ -468,9 +468,16 @@ def call_claude(prompt, client=None):
         # The diff is re-sent on every turn of the loop, so it earns a breakpoint
         # of its own: without one, an eight-turn review pays full price for the
         # same bundle eight times.
+        #
+        # 5m, not 1h. This block is diff-specific and can never be reused by a
+        # later run — the next push has a different diff — so it only has to
+        # survive this loop, whose turns are seconds apart. A 1h write costs 2x
+        # against 1.25x for 5m, and that 0.75x premium was buying nothing. The
+        # system block above keeps 1h because it IS identical across runs and
+        # across PRs in the same repo.
         messages=[{"role": "user", "content": [
             {"type": "text", "text": prompt,
-             "cache_control": {"type": "ephemeral", "ttl": "1h"}}]}],
+             "cache_control": {"type": "ephemeral", "ttl": "5m"}}]}],
         # max_tokens this high estimates past the SDK's 10-minute non-streaming
         # ceiling, so the runner must stream.
         stream=True,
