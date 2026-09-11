@@ -305,6 +305,26 @@ def build_prompt(base):
     return "\n\n".join(blocks), paths
 
 
+def reported_already():
+    """Show the model the ids already open on this PR.
+
+    Asking it to regenerate a stable id from memory does not work — it coined
+    three different slugs for one defect across three runs. Giving it the actual
+    ids makes reuse a lookup instead of a feat of consistency."""
+    if not REPO or not PR:
+        return "# Already reported on this PR\n(none)"
+    lines = []
+    for t in open_threads():
+        if "#" not in t["key"]:
+            continue  # legacy content-hash key, meaningless to the model
+        lines.append("- `{}` — {}".format(t["key"], t["gist"]))
+    if not lines:
+        return "# Already reported on this PR\n(none)"
+    return ("# Already reported on this PR\n"
+            "Reuse the exact id if you report the same defect again. Do not repeat one "
+            "that is now fixed.\n" + "\n".join(lines))
+
+
 def call_claude(prompt):
     import anthropic
     from anthropic import beta_tool
@@ -328,10 +348,14 @@ def call_claude(prompt):
         tools=kit,
         output_format=ReviewResult,
         messages=[{"role": "user", "content": prompt}],
+        # max_tokens this high estimates past the SDK's 10-minute non-streaming
+        # ceiling, so the runner must stream.
+        stream=True,
     )
 
     last, calls, usage_in, usage_out, cache_r, cache_w = None, 0, 0, 0, 0, 0
-    for message in runner:
+    for turn in runner:
+        message = turn.get_final_message()
         last = message
         u = getattr(message, "usage", None)
         if u:

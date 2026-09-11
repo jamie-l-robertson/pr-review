@@ -3,9 +3,9 @@
 AI pull-request review for GitHub, with deterministic checks in front of it.
 
 On every PR it runs secret scanning, lint, SAST and a PII scan — **routed by the
-languages actually present in the diff** — then hands Claude the diff, the full
-contents of every changed file, one hop of imports in each direction, the check
-output and the repo's own conventions. Findings come back as inline review comments.
+languages actually present in the diff** — then hands Claude the diff, the check output and the repo's own conventions — and
+lets it read the rest of the checkout itself through read-only tools. Findings come
+back as inline review comments.
 
 ## Use it
 
@@ -129,7 +129,7 @@ so explicitly — an invented finding costs more than a missed one.
 
 ## What blocks and what doesn't
 
-**gitleaks is a hard gate.** If the diff contains a credential the job fails there
+**betterleaks is a hard gate.** If the diff contains a credential the job fails there
 and nothing is sent to the Anthropic API — that ordering is the point of the design,
 not just a cost saving.
 
@@ -148,7 +148,7 @@ SCSS-only PR skips `pnpm install` entirely.
 | `.py` `.go` `.rb` `.php` `.java` `.sql` `.tf` | the matching semgrep ruleset |
 | `.yml .yaml` under `.github/` | semgrep `p/github-actions` |
 | anything else | agent review only |
-| always | gitleaks + PII |
+| always | betterleaks + PII |
 
 Unknown extensions contribute nothing rather than failing.
 
@@ -164,7 +164,7 @@ Nothing is vendored into this repo, deliberately:
 
 | Tool | Source | Pinned |
 |---|---|---|
-| gitleaks | binary from its GitHub release | `GITLEAKS_VERSION` in the workflow |
+| betterleaks | binary from its GitHub release, **sha256-verified against the published checksums** | `BETTERLEAKS_VERSION` |
 | semgrep | pip, rules pulled from the public registry | `SEMGREP_VERSION` |
 | ESLint | **the consuming repo's own `node_modules`** | that repo's lockfile |
 | anthropic SDK | pip | `ANTHROPIC_SDK_VERSION` |
