@@ -301,6 +301,30 @@ schema that becomes comments. It has no tools and cannot touch the repo. Fork PR
 get no review at all, so reaching this at all requires push access — the realistic
 vector is a dependency-update branch or vendored third-party content, not a stranger.
 
+## What a run costs
+
+Measured on a real 24-file PR, elevated tier:
+
+| | |
+|---|---|
+| Input (1x) | 1,009,539 → $5.05 |
+| Cache reads (0.1x) | 2,546,048 → $1.27 |
+| Cache writes (2x) | 80,179 → $0.80 |
+| Output | 19,201 → $0.48 |
+| **Total** | **~$7.60** |
+
+That was at 40 turns. Every turn replays the whole conversation, so loop cost grows
+roughly with the square of the turn count — the exploration that makes the reviewer
+better is also what makes it expensive, and the two cannot be separated by tuning
+the prompt.
+
+`MAX_ITERATIONS` defaults to **14** for that reason. Raise it only if findings look
+thin, and read the cost line in the log when you do. The cap is the only real
+control: a mid-loop bail does not work, because the findings only exist in the
+final message.
+
+Caching saved roughly $10 on that run. It is not optional at this scale.
+
 ## Caching
 
 The system block (prompt + your `AGENTS.md`) carries a `cache_control` breakpoint.
