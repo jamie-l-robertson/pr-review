@@ -38,6 +38,10 @@ on:
           packageManager, which is the better place for it.
         type: string
         default: "10"
+      react-doctor-version:
+        description: react-doctor version to run, or "latest".
+        type: string
+        default: "latest"
       max-reviews-per-pr:
         description: Stop reviewing a PR after this many reviews. 0 disables the cap.
         type: number
@@ -118,13 +122,16 @@ jobs:
       - name: Scan for secrets (betterleaks)
         run: |
           base="https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}"
-          curl -sSfL -o bl.tar.gz "${base}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
+          tarball="betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
+          # Keep the published filename: sha256sum -c matches on the name in
+          # checksums.txt, so renaming the download makes verification fail.
+          curl -sSfL -o "$tarball" "${base}/${tarball}"
           curl -sSfL -o checksums.txt "${base}/checksums.txt"
           # Verify before extracting. The previous gitleaks step piped curl
           # straight into tar, so the gate against supply-chain compromise was
           # itself installed from an unverified download.
-          grep " betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz$" checksums.txt | sha256sum -c -
-          tar -xz -C /usr/local/bin -f bl.tar.gz betterleaks
+          grep " ${tarball}$" checksums.txt | sha256sum -c -
+          tar -xz -C /usr/local/bin -f "$tarball" betterleaks
           betterleaks git . --log-opts="${{ steps.range.outputs.base }}..HEAD" \
             --redact --no-banner --exit-code 1
 
@@ -166,6 +173,17 @@ jobs:
           semgrep scan ${{ steps.detect.outputs.semgrep_configs }} \
             --json -o "$RUNNER_TEMP/semgrep.json" --quiet
 
+      - name: React review (react-doctor)
+        if: steps.detect.outputs.run_react_doctor == 'true'
+        continue-on-error: true
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # Only the changed components, so it reports what this PR introduced
+          # rather than the repo's existing backlog.
+          xargs -a "$RUNNER_TEMP/react-files.txt" -r \
+            npx --yes react-doctor@${{ inputs.react-doctor-version }} --format json \
+            > "$RUNNER_TEMP/react-doctor.json"
+
       - name: PII scan
         continue-on-error: true
         env:
@@ -189,6 +207,7 @@ jobs:
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
           RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
           RAN_SEMGREP: ${{ steps.detect.outputs.semgrep_configs }}
+          RAN_REACT_DOCTOR: ${{ steps.detect.outputs.run_react_doctor }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |
