@@ -57,7 +57,7 @@ on:
           Tool-use turns the reviewer gets. Cost grows with the square of this,
           so raise it only if findings look thin.
         type: number
-        default: 5
+        default: 10
       max-reviews-per-pr:
         description: Stop reviewing a PR after this many reviews. 0 disables the cap.
         type: number

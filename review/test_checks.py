@@ -297,6 +297,79 @@ def test_paths_are_made_relative_to_the_working_directory():
     assert rel_to_workdir("application/a.ts", "app") == "application/a.ts"
 
 
+
+def test_second_order_effects_are_in_both_prompts():
+    from review import SYSTEM, fix_block
+    # A change can be right in isolation and still break something. Both the
+    # review prompt and the pasteable fix prompt have to ask that question —
+    # the reviewer to find it, the fixing agent not to reintroduce it.
+    for phrase in ("SECOND-ORDER EFFECTS", "already written under the old behaviour",
+                   "Denormalised or cached", "Other paths to the same outcome",
+                   "Deploy and rollback order"):
+        assert phrase in SYSTEM, phrase
+    # Claims must be checked, not speculated.
+    assert "Report only consequences you have actually checked" in SYSTEM
+    block = fix_block({"id": "x", "path": "a.ts", "line": 1, "severity": "minor",
+                       "category": "code-quality", "body": "b", "remedy": "r"})
+    assert "makes untrue elsewhere" in block
+    # And widening the diff is the author's call, not the agent's.
+    assert "let the author decide" in block
+
+
+
+def test_turn_cap_is_counted_in_turns_not_tool_calls():
+    # A single turn can carry several parallel tool calls, so comparing calls
+    # against a turn cap reported a cap that had not been hit — and that line is
+    # the signal for whether the cap is too tight.
+    import inspect
+    from review import call_claude
+    src = inspect.getsource(call_claude)
+    assert "turns += 1" in src
+    assert "if turns >= MAX_ITERATIONS" in src
+    assert "if calls >= MAX_ITERATIONS" not in src
+
+
+def test_prompt_gives_a_stopping_condition_in_both_directions():
+    from review import SYSTEM
+    # Frugality alone would make it stop early; thoroughness alone would make it
+    # read everything. It needs both halves.
+    assert "Stop reading when another read would not change your findings" in SYSTEM
+    assert "do not stop early" in SYSTEM
+
+
+
+def test_changed_files_are_preloaded_not_left_to_tool_calls():
+    """Runs the real builder against this repo's own last commit. No API calls."""
+    import subprocess
+    import review
+    head1 = subprocess.run(("git", "rev-parse", "-q", "--verify", "HEAD~1"),
+                           capture_output=True, text=True)
+    if head1.returncode != 0:
+        return  # shallow clone; nothing to diff against
+    prompt, paths = review.build_prompt(head1.stdout.strip())
+    if not prompt:
+        return  # a docs-only commit is correctly skipped
+    # Every changed file's contents are in the prompt, so none costs a tool call.
+    for p in paths:
+        assert "## {}".format(p) in prompt, p
+    assert "do not spend a tool call re-reading" in prompt
+    # And the reads it cannot predict are still pushed to the tools, batched.
+    assert "callers and callees" in prompt
+    assert "ONE turn" in prompt
+
+
+
+def test_build_artefacts_are_never_reviewed():
+    from common import skipped
+    # git add -A once committed compiled bytecode here, and the reviewer then
+    # treated .pyc files as changed files to open.
+    for p in ("review/__pycache__/review.cpython-312.pyc", ".venv/lib/x.py",
+              "vendor/dep.go", "node_modules/a/index.js", "dist/bundle.js"):
+        assert skipped(p), p
+    for p in ("review/review.py", "lib/a.ts", "app/page.tsx"):
+        assert not skipped(p), p
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

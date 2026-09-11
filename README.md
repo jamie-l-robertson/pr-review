@@ -70,7 +70,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
-| `max-iterations` | `5` | Tool-use turns. Cost grows with the square of this. |
+| `max-iterations` | `10` | Tool-use turns. Cost grows with the square of this. |
 | `max-reviews-per-pr` | `5` | Stop after this many reviews on one PR. `0` disables. |
 | `skillspector-ref` | `v2.11.2` | Pinned; SkillSpector is not on PyPI. |
 | `react-doctor-version` | `latest` | Pin it if `latest` ever surprises you. |
@@ -144,6 +144,26 @@ The review scope claims `cybersecurity` covers "dependency and CVE exposure", bu
 semgrep matches patterns, not advisories — nothing fed that topic. `pnpm audit`
 now does, gated on a lockfile actually moving in the diff. Auditing the whole tree
 on every PR would report the same backlog forever and teach everyone to skip it.
+
+## Second-order effects
+
+A change can be correct in isolation and still break something. The prompt asks
+what a change makes *untrue* elsewhere, not only whether the new lines are right:
+
+- rows already written under the old behaviour — does this need a backfill?
+- denormalised or cached copies: counters, aggregates, search indexes, ISR/CDN
+- concurrency with what already runs: triggers, crons, queue consumers, migrations
+  against live traffic
+- other paths to the same outcome — a fix at one call site, not at the second
+- contracts: callers, tests, types, response shapes, constraints, persisted enums
+- deploy and rollback order
+
+Consequences must be **checked, not speculated**: "this might affect callers"
+without having opened them is worth nothing, and the tools exist to go and look.
+
+The pasteable fix prompt carries the same question, so an agent fixing a finding
+does not reintroduce the problem one layer out. It is told to surface a knock-on
+rather than silently widen the diff — whether to fix it too is the author's call.
 
 ## Review scope
 
@@ -341,16 +361,27 @@ budget: cost grows with the **square** of the turn count but only linearly with
 result size, so a single large read is cheaper than a second turn. It also covers
 almost any file in a repo that caps its own files at 400 lines.
 
-`max-iterations` defaults to **5** for that reason — a handful of targeted reads,
+`max-iterations` defaults to **10** for that reason — a handful of targeted reads,
 not a tour of the repo. Raise it only if findings look thin, and read the cost line
 in the log when you do. The cap is the only real control: a mid-loop bail does not
 work, because the findings only exist in the final message.
 
+10 leaves room to follow a change outwards — callers, the second call site,
+whether a counter was backfilled — which is what the second-order rules ask for
+and what 5 could not afford. It is still far below the 40 that cost $7.60.
+
 Hitting the cap is safe. The reviewer is asked once more, with no tools, to report
 from what it has already read and to mark anything it did not genuinely examine as
 `not-reviewed` rather than `clean` — so a cheap run degrades into a shallower
-review, never into no review. At 5 turns that wrap-up call is the normal path, not
+review, never into no review. At a tight cap that wrap-up call is the normal path rather than
 an exception.
+
+The log reports `turns: N/M` alongside the token counts, so you can see whether a
+review finished early or ran to the ceiling. The model does **not** minimise turns
+on its own — at a cap of 40 it used all 40 — so the prompt gives it an explicit
+stopping condition in both directions: stop when another read would not change the
+findings, but do not stop while a changed file is unopened or a raised consequence
+unchecked.
 
 Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR, with
 lots of files marked `not-reviewed`, the cap is costing you findings.
