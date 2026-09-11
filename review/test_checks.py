@@ -208,13 +208,14 @@ def test_tools_refuse_to_leave_the_repo():
 
 
 def test_inert_diffs_skip_the_model_call():
-    from review import worth_reviewing
+    from review import reviewable as worth_reviewing
     # A docs-and-assets-only PR is not worth paying a model to read.
     assert worth_reviewing(["README.md", "public/logo.svg", "docs/a.txt"]) == []
     # One real file makes the whole diff worth reviewing.
     assert worth_reviewing(["README.md", "lib/a.ts"]) == ["lib/a.ts"]
-    # Workflow YAML is NOT inert — it is exactly where CI secrets leak.
-    assert worth_reviewing([".github/workflows/ci.yml"]) == [".github/workflows/ci.yml"]
+    # Workflow YAML is where CI secrets leak, but that is semgrep's job now, not
+    # the model's — see test_ci_and_agent_config_are_not_reviewed_but_are_still_scanned.
+    assert worth_reviewing([".github/workflows/ci.yml"]) == []
     # Lockfiles never reach here; common.skipped() drops them from changed_files.
     from common import skipped
     assert skipped("pnpm-lock.yaml") and skipped("yarn.lock")
@@ -383,6 +384,32 @@ def test_cache_ttls_match_what_each_block_can_reuse():
     assert '"ttl": "1h"' in src[sys_idx:msg_idx], "system block should hold 1h"
     assert '"ttl": "5m"' in src[msg_idx:], "diff block should be 5m"
     assert '"ttl": "1h"' not in src[msg_idx:], "diff block must not pay the 1h premium"
+
+
+
+def test_ci_and_agent_config_are_not_reviewed_but_are_still_scanned():
+    from review import reviewable
+    from detect import AGENT_PATHS, route
+    # The model does not comment on these: they change for reasons a code
+    # reviewer has no view on, and a one-line pin bump was pulling a full review.
+    assert reviewable([".github/workflows/review.yml"]) == []
+    assert reviewable([".claude/settings.json", ".cursor/hooks.json"]) == []
+    assert reviewable([".vscode/settings.json"]) == []
+    # A mixed diff still reviews the source, and only the source.
+    assert reviewable([".github/workflows/ci.yml", "lib/a.ts"]) == ["lib/a.ts"]
+    # But the deterministic checks still see them — that is the whole point of
+    # excluding them from the model rather than from the pipeline.
+    assert route([".github/workflows/ci.yml"])[1] == ["p/github-actions"]
+    assert any(a in ".claude/settings.json" for a in AGENT_PATHS)
+    assert any(a in ".cursor/hooks.json" for a in AGENT_PATHS)
+
+
+def test_reviewable_filters_rather_than_merely_gating():
+    from review import reviewable
+    # It used to be called only as a yes/no gate, so a PR of one source file and
+    # three changelog entries sent the model all four.
+    assert reviewable(["lib/a.ts", "CHANGELOG.md", "docs/b.md", "public/c.svg"]) \
+        == ["lib/a.ts"]
 
 
 if __name__ == "__main__":

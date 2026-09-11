@@ -165,6 +165,20 @@ The pasteable fix prompt carries the same question, so an agent fixing a finding
 does not reintroduce the problem one layer out. It is told to surface a knock-on
 rather than silently widen the diff — whether to fix it too is the author's call.
 
+## What the model is not shown
+
+`.github/`, `.claude/`, `.cursor/`, `.superpowers/`, `.codex/`, `.vscode/` and
+`.idea/` are excluded from the review, along with docs and binary assets. They
+change for reasons a code reviewer has no view on — a pin bump, a hook tweak — and
+a one-line workflow edit was pulling a full review every time.
+
+**The deterministic checks still see them.** semgrep `p/github-actions` scans
+workflows, SkillSpector scans hooks and MCP config, and betterleaks scans
+everything. Excluding them from the model is not excluding them from the pipeline.
+
+A PR containing nothing else skips the model call entirely. A mixed PR sends only
+the source files — this filters, it does not merely gate.
+
 ## Review scope
 
 Eight topics, four of them conditional — a topic whose condition does not hold is
