@@ -69,6 +69,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
+| `max-iterations` | `5` | Tool-use turns. Cost grows with the square of this. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
 | `skillspector-ref` | `v2.11.2` | Pinned; SkillSpector is not on PyPI. |
 | `react-doctor-version` | `latest` | Pin it if `latest` ever surprises you. |
@@ -318,10 +319,14 @@ roughly with the square of the turn count — the exploration that makes the rev
 better is also what makes it expensive, and the two cannot be separated by tuning
 the prompt.
 
-`MAX_ITERATIONS` defaults to **14** for that reason. Raise it only if findings look
-thin, and read the cost line in the log when you do. The cap is the only real
-control: a mid-loop bail does not work, because the findings only exist in the
-final message.
+`max-iterations` defaults to **5** for that reason — a handful of targeted reads,
+not a tour of the repo. Raise it only if findings look thin, and read the cost line
+in the log when you do. The cap is the only real control: a mid-loop bail does not
+work, because the findings only exist in the final message.
+
+Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR it
+means the reviewer is being cut off mid-thought rather than finishing early, and
+the cap is costing you findings.
 
 Caching saved roughly $10 on that run. It is not optional at this scale.
 

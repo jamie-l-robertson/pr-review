@@ -27,7 +27,12 @@ MAX_COMMENTS = 20
 # square of the turn count. At 40 a real PR cost $7.60 and a million input
 # tokens. Cutting this is the one knob that bounds it; a mid-loop bail is worse,
 # because the findings only exist in the final message.
-MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 14)
+#
+# 5 buys a handful of targeted reads, not a tour of the repo. That is a
+# deliberate trade: cheaper runs, and a reviewer that must spend its reads well.
+# Watch the "hit the N-turn cap" line — if it appears on every PR, the reviewer
+# is being cut off mid-thought rather than finishing early.
+MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 5)
 
 # GitHub comments take no arbitrary colour, but these render everywhere the
 # comment does — web, mobile, email notifications — with no external image.

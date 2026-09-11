@@ -46,6 +46,12 @@ on:
         description: react-doctor version to run, or "latest".
         type: string
         default: "latest"
+      max-iterations:
+        description: >-
+          Tool-use turns the reviewer gets. Cost grows with the square of this,
+          so raise it only if findings look thin.
+        type: number
+        default: 5
       max-reviews-per-pr:
         description: Stop reviewing a PR after this many reviews. 0 disables the cap.
         type: number
@@ -238,6 +244,7 @@ jobs:
           RAN_SKILLSPECTOR: ${{ steps.detect.outputs.run_skillspector }}
           RAN_AUDIT: ${{ steps.detect.outputs.run_audit }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
+          MAX_ITERATIONS: ${{ inputs.max-iterations }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |
           pip install --quiet "anthropic==${ANTHROPIC_SDK_VERSION}"
