@@ -36,6 +36,7 @@ REACT_EXTS = (".tsx", ".jsx")
 # Agent configuration is executable in practice: hooks run, MCP servers are
 # launched, instruction files steer coding agents. Nothing else in the pipeline
 # looks at any of it.
+LOCKFILES = ("pnpm-lock.yaml", "package-lock.json", "yarn.lock")
 AGENT_PATHS = (".claude/", ".cursor/", ".mcp.json", ".superpowers/", ".codex/",
                ".github/copilot", "skill.md", "agents.md", "claude.md")
 
@@ -85,6 +86,11 @@ def main():
 
     # react-doctor takes explicit paths, so it only ever sees the changed
     # components. Written to a file rather than an output to dodge quoting.
+    # changed_files() drops lockfiles, so ask git directly. A PR that does not
+    # touch dependencies does not need its dependency tree audited.
+    raw = git("diff", "--name-only", base_ref() + "...HEAD").splitlines()
+    deps_changed = any(os.path.basename(p) in LOCKFILES for p in raw)
+
     agent = [p for p in paths if any(a in p.lower() for a in AGENT_PATHS)]
     with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"),
                            "agent-files.txt"), "w") as fh:
@@ -105,6 +111,7 @@ def main():
         "changed_count": str(len(paths)),
         "run_react_doctor": "true" if react else "false",
         "run_skillspector": "true" if agent else "false",
+        "run_audit": "true" if (deps_changed and has_pkg) else "false",
         "tier": tier(paths, added),
         "added_lines": str(added),
     }

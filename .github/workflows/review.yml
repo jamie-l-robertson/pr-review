@@ -151,11 +151,11 @@ jobs:
         run: python .pr-review/review/detect.py
 
       - uses: pnpm/action-setup@v4
-        if: steps.detect.outputs.run_eslint == 'true'
+        if: steps.detect.outputs.run_eslint == 'true' || steps.detect.outputs.run_audit == 'true'
         with:
           version: ${{ inputs.pnpm-version }}
       - uses: actions/setup-node@v6
-        if: steps.detect.outputs.run_eslint == 'true'
+        if: steps.detect.outputs.run_eslint == 'true' || steps.detect.outputs.run_audit == 'true'
         with:
           node-version: 22
           cache: pnpm
@@ -168,6 +168,15 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           ${{ inputs.lint-command || format('pnpm lint --format json -o {0}/eslint.json', runner.temp) }}
+
+      - name: Dependency audit
+        if: steps.detect.outputs.run_audit == 'true'
+        continue-on-error: true
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # Only when the lockfile moved. Auditing the whole tree on every PR
+          # would report the same backlog forever and teach everyone to skip it.
+          pnpm audit --json > "$RUNNER_TEMP/audit.json"
 
       - name: SAST (semgrep)
         if: steps.detect.outputs.semgrep_configs != ''
@@ -227,6 +236,7 @@ jobs:
           RAN_SEMGREP: ${{ steps.detect.outputs.semgrep_configs }}
           RAN_REACT_DOCTOR: ${{ steps.detect.outputs.run_react_doctor }}
           RAN_SKILLSPECTOR: ${{ steps.detect.outputs.run_skillspector }}
+          RAN_AUDIT: ${{ steps.detect.outputs.run_audit }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |

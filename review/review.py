@@ -253,6 +253,8 @@ def findings_context():
     expected = {
         "ESLint": ("eslint.json", os.environ.get("RAN_ESLINT") == "true"),
         "Semgrep": ("semgrep.json", bool(os.environ.get("RAN_SEMGREP"))),
+        "Dependency audit (CVEs)": ("audit.json",
+                                    os.environ.get("RAN_AUDIT") == "true"),
         "SkillSpector (agent config)": ("skillspector.json",
                                        os.environ.get("RAN_SKILLSPECTOR") == "true"),
         "React Doctor": ("react-doctor.json", os.environ.get("RAN_REACT_DOCTOR") == "true"),
