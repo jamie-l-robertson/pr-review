@@ -385,10 +385,17 @@ def call_claude(prompt):
         stream=True,
     )
 
+    # Mirror the conversation as it goes: the runner keeps its own copy and does
+    # not expose it, and hitting the turn cap leaves the findings unwritten.
+    history = [{"role": "user", "content": prompt}]
     last, calls, usage_in, usage_out, cache_r, cache_w = None, 0, 0, 0, 0, 0
     for turn in runner:
         message = turn.get_final_message()
         last = message
+        history.append({"role": "assistant", "content": message.content})
+        tool_response = runner.generate_tool_call_response()
+        if tool_response is not None:
+            history.append(tool_response)
         u = getattr(message, "usage", None)
         if u:
             usage_in += u.input_tokens or 0
@@ -414,10 +421,28 @@ def call_claude(prompt):
 
     parsed = getattr(last, "parsed_output", None)
     if parsed is None:
-        # The loop ran out of iterations before it produced its findings.
-        raise SystemExit(
-            "no structured output after {} iterations and {} tool calls — raise "
-            "MAX_ITERATIONS".format(MAX_ITERATIONS, calls))
+        # The cap cut the loop off mid-exploration. Ask once more, with no tools,
+        # for the findings it already has — a cheap cap is no use if reaching it
+        # throws the whole review away.
+        print("cap reached before findings; asking once more without tools",
+              file=sys.stderr)
+        history.append({"role": "user", "content":
+                        "Stop reading and report now. Give your findings from what "
+                        "you have already seen, and mark any changed file you did "
+                        "not genuinely examine as not-reviewed rather than clean."})
+        final = client.messages.parse(
+            model=MODEL,
+            max_tokens=16000,
+            system=SYSTEM + "\n\n" + house_rules(),
+            messages=history,
+            output_format=ReviewResult,
+        )
+        u = final.usage
+        print("  wrap-up call: {} in / {} out".format(u.input_tokens, u.output_tokens),
+              file=sys.stderr)
+        parsed = final.parsed_output
+    if parsed is None:
+        raise SystemExit("no findings even after the wrap-up call")
     return parsed.model_dump()
 
 

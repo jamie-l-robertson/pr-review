@@ -324,9 +324,14 @@ not a tour of the repo. Raise it only if findings look thin, and read the cost l
 in the log when you do. The cap is the only real control: a mid-loop bail does not
 work, because the findings only exist in the final message.
 
-Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR it
-means the reviewer is being cut off mid-thought rather than finishing early, and
-the cap is costing you findings.
+Hitting the cap is safe. The reviewer is asked once more, with no tools, to report
+from what it has already read and to mark anything it did not genuinely examine as
+`not-reviewed` rather than `clean` — so a cheap run degrades into a shallower
+review, never into no review. At 5 turns that wrap-up call is the normal path, not
+an exception.
+
+Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR, with
+lots of files marked `not-reviewed`, the cap is costing you findings.
 
 Caching saved roughly $10 on that run. It is not optional at this scale.
 
