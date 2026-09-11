@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Assemble PR context, ask Claude for findings, post them as inline comments.
 
-Context is deliberately wider than the diff: full post-change contents of every
-changed file, plus one hop of imports in each direction. A reviewer that can only
-see the hunk invents problems that the surrounding code already solves.
+The model is given the diff and the pre-check output, then reads the rest of the
+checkout itself through the read-only tools in tools.py. It used to be handed a
+fixed bundle of file contents chosen up front, which meant a defect whose
+evidence sat in a file nobody thought to include could not be found at all.
 """
 import json
 import hashlib
@@ -28,11 +29,12 @@ MAX_COMMENTS = 20
 # tokens. Cutting this is the one knob that bounds it; a mid-loop bail is worse,
 # because the findings only exist in the final message.
 #
-# 5 buys a handful of targeted reads, not a tour of the repo. That is a
-# deliberate trade: cheaper runs, and a reviewer that must spend its reads well.
-# Watch the "hit the N-turn cap" line — if it appears on every PR, the reviewer
-# is being cut off mid-thought rather than finishing early.
-MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 5)
+# 10 leaves room to follow a change outwards — callers, the second call site,
+# whether a counter was backfilled — which is what the second-order rules ask
+# for and what 5 could not afford. Still an order of magnitude below the 40 that
+# cost $7.60. Watch the "hit the N-turn cap" line: on every PR it means the
+# reviewer is being cut off mid-thought rather than finishing early.
+MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 10)
 
 # GitHub comments take no arbitrary colour, but these render everywhere the
 # comment does — web, mobile, email notifications — with no external image.

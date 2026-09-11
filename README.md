@@ -70,7 +70,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
-| `max-iterations` | `5` | Tool-use turns. Cost grows with the square of this. |
+| `max-iterations` | `10` | Tool-use turns. Cost grows with the square of this. |
 | `max-reviews-per-pr` | `5` | Stop after this many reviews on one PR. `0` disables. |
 | `skillspector-ref` | `v2.11.2` | Pinned; SkillSpector is not on PyPI. |
 | `react-doctor-version` | `latest` | Pin it if `latest` ever surprises you. |
@@ -361,15 +361,19 @@ budget: cost grows with the **square** of the turn count but only linearly with
 result size, so a single large read is cheaper than a second turn. It also covers
 almost any file in a repo that caps its own files at 400 lines.
 
-`max-iterations` defaults to **5** for that reason — a handful of targeted reads,
+`max-iterations` defaults to **10** for that reason — a handful of targeted reads,
 not a tour of the repo. Raise it only if findings look thin, and read the cost line
 in the log when you do. The cap is the only real control: a mid-loop bail does not
 work, because the findings only exist in the final message.
 
+10 leaves room to follow a change outwards — callers, the second call site,
+whether a counter was backfilled — which is what the second-order rules ask for
+and what 5 could not afford. It is still far below the 40 that cost $7.60.
+
 Hitting the cap is safe. The reviewer is asked once more, with no tools, to report
 from what it has already read and to mark anything it did not genuinely examine as
 `not-reviewed` rather than `clean` — so a cheap run degrades into a shallower
-review, never into no review. At 5 turns that wrap-up call is the normal path, not
+review, never into no review. At a tight cap that wrap-up call is the normal path rather than
 an exception.
 
 Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR, with
