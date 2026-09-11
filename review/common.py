@@ -3,7 +3,8 @@ import os
 import subprocess
 
 # Never worth scanning, linting or feeding to the model.
-SKIP_DIRS = ("node_modules/", "public/", ".next/", "dist/", "build/", ".worktrees/")
+SKIP_DIRS = ("node_modules/", "public/", ".next/", "dist/", "build/",
+             ".worktrees/", "__pycache__/", ".venv/", "vendor/")
 SKIP_NAMES = ("pnpm-lock.yaml", "package-lock.json", "yarn.lock", "poetry.lock", "go.sum")
 MAX_FILE_BYTES = 100_000
 

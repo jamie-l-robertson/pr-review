@@ -358,6 +358,18 @@ def test_changed_files_are_preloaded_not_left_to_tool_calls():
     assert "ONE turn" in prompt
 
 
+
+def test_build_artefacts_are_never_reviewed():
+    from common import skipped
+    # git add -A once committed compiled bytecode here, and the reviewer then
+    # treated .pyc files as changed files to open.
+    for p in ("review/__pycache__/review.cpython-312.pyc", ".venv/lib/x.py",
+              "vendor/dep.go", "node_modules/a/index.js", "dist/bundle.js"):
+        assert skipped(p), p
+    for p in ("review/review.py", "lib/a.ts", "app/page.tsx"):
+        assert not skipped(p), p
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
