@@ -17,7 +17,13 @@ on:
       routine-model:
         description: Model for small, low-risk diffs.
         type: string
-        default: claude-sonnet-5
+        default: claude-opus-5
+      test-model:
+        description: >-
+          Used when the PR title contains [test review]. For runs that exercise
+          the pipeline rather than review the code.
+        type: string
+        default: claude-haiku-4-5
       elevated-model:
         description: Model for large or sensitive diffs.
         type: string
@@ -55,7 +61,7 @@ on:
       max-reviews-per-pr:
         description: Stop reviewing a PR after this many reviews. 0 disables the cap.
         type: number
-        default: 10
+        default: 5
       lint-command:
         description: Overrides autodetection. Must write ESLint JSON to $RUNNER_TEMP/eslint.json.
         type: string
@@ -234,8 +240,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ steps.range.outputs.base }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          MODEL: ${{ inputs.model || (steps.detect.outputs.tier == 'elevated' && inputs.elevated-model || inputs.routine-model) }}
-          TIER: ${{ steps.detect.outputs.tier }}
+          MODEL: >-
+            ${{ inputs.model
+                || (contains(github.event.pull_request.title, '[test review]') && inputs.test-model)
+                || (steps.detect.outputs.tier == 'elevated' && inputs.elevated-model)
+                || inputs.routine-model }}
+          TIER: ${{ contains(github.event.pull_request.title, '[test review]') && 'test' || steps.detect.outputs.tier }}
           EFFORT: ${{ inputs.effort }}
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
           RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
