@@ -271,6 +271,18 @@ def test_compact_keeps_findings_and_drops_padding():
     assert compact("eslint.json", "not json at all") == "not json at all"
 
 
+
+def test_touched_since_needs_real_evidence():
+    from review import touched_since
+    # No commit recorded, or a commit that no longer exists after a force-push,
+    # is not evidence that anything was fixed.
+    assert touched_since("review/review.py", "") is False
+    assert touched_since("review/review.py", "deadbeefdeadbeef") is False
+    assert touched_since("", "HEAD") is False
+    # A file identical to HEAD has not been touched since HEAD.
+    assert touched_since("review/review.py", "HEAD") is False
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

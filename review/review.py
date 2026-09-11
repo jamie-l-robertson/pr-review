@@ -629,7 +629,7 @@ query($owner:String!, $name:String!, $pr:Int!) {
       reviewThreads(first:100) {
         nodes {
           id isResolved isOutdated
-          comments(first:1) { nodes { body path line } }
+          comments(first:1) { nodes { body path line originalCommit { oid } } }
         }
       }
     }
@@ -671,17 +671,35 @@ def open_threads():
                 continue
             key = content_key(c["path"], c["body"])
         out.append({"id": t["id"], "outdated": t["isOutdated"], "key": key,
-                    "gist": gist_of(c["body"])})
+                    "path": c["path"], "gist": gist_of(c["body"]),
+                    "since": ((c.get("originalCommit") or {}).get("oid") or "")})
     return out
 
 
+def touched_since(path, commit):
+    """Has this file changed since the comment was written?
+
+    GitHub's own `outdated` flag only trips when the anchored hunk disappears,
+    so fixing a defect by editing around it leaves the thread looking current
+    forever. Asking git whether the file moved at all catches the ordinary case:
+    the author changed the code and the reviewer stopped complaining."""
+    if not commit or not path:
+        return False
+    r = subprocess.run(("git", "diff", "--quiet", commit, "HEAD", "--", path),
+                       capture_output=True, text=True)
+    # 1 means differences; 0 means identical; anything else (a commit we no
+    # longer have after a force-push) is not evidence of a fix.
+    return r.returncode == 1
+
+
 def resolve_stale(current_keys):
-    """Close a thread only when BOTH signals agree: the anchored code changed,
+    """Close a thread only when BOTH signals agree: the code behind it changed,
     AND this run no longer reports it. The model going quiet is not evidence a
     bug was fixed — on its own it would eventually hide a real one."""
     closed = 0
     for t in open_threads():
-        if not t["outdated"] or t["key"] in current_keys:
+        changed = t["outdated"] or touched_since(t["path"], t["since"])
+        if not changed or t["key"] in current_keys:
             continue
         try:
             gh("api", "graphql", "-f", "query=" + RESOLVE_M, "-F", "id=" + t["id"])
