@@ -9,7 +9,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from detect import route
 from pii import luhn, scan_line
-from review import (SCHEMA, SYSTEM, all_in_one, content_key, coverage_note, dot,
+from review import (SYSTEM, all_in_one, content_key, coverage_note, dot,
                     fenced, fix_block, marker, marker_of, tally)
 
 
@@ -176,7 +176,10 @@ def test_coverage_note_flags_skipped_and_missing_files():
 def test_categories_match_the_documented_topics():
     # The prompt names the topics and the schema constrains them; if they drift
     # apart the model returns a category the enum rejects, failing the whole call.
-    enum = SCHEMA["properties"]["findings"]["items"]["properties"]["category"]["enum"]
+    try:
+        from models import CATEGORIES as enum
+    except ImportError:
+        return  # pydantic absent locally; CI installs it
     assert len(enum) == len(set(enum))
     for slug in enum:
         assert "`{}`".format(slug) in SYSTEM, slug
@@ -190,6 +193,17 @@ def test_fenced_widths():
     assert fenced("plain").startswith("```\n")
     assert fenced("a ``` b").startswith("````")
     assert fenced("a ````` b").startswith("``````")
+
+
+
+def test_tools_refuse_to_leave_the_repo():
+    # These arguments arrive from a model reading an untrusted diff.
+    import tools
+    assert "refused" in tools.read_file("../../../etc/passwd")
+    assert "refused" in tools.read_file("/etc/passwd")
+    assert "refused" in tools.search("x", "../etc/*")
+    assert "refused" in tools.list_files("../..")
+    assert "refused" in tools.history("/etc")
 
 
 if __name__ == "__main__":

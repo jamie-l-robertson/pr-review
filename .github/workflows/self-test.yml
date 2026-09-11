@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install pydantic for the model checks
+        run: pip install --quiet pydantic
       - run: python review/test_checks.py
       - name: Compile all scripts
         run: python -m compileall -q review
