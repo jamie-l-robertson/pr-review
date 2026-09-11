@@ -176,7 +176,6 @@ Excluded from the review:
 | `*.generated.*` `*.gen.*` `*.pb.go` `*_pb2.py` `next-env.d.ts` | codegen; review the generator instead |
 | `*.min.js` `*.min.css` | unreviewable by construction |
 | `coverage/` `storybook-static/` `.turbo/` `out/` `.svelte-kit/` | build output that sometimes gets committed |
-| `design_handoff*` | frozen bundles that reference components which no longer exist |
 | docs, images, fonts, PDFs | not code |
 
 **Config is not inert, even though it is JSON.** `package.json`, `tsconfig.json`,

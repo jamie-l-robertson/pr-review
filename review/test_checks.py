@@ -429,8 +429,8 @@ def test_generated_and_frozen_files_are_not_reviewed():
     from review import reviewable
     for p in ("app/__snapshots__/Nav.snap", "lib/a.snap", "coverage/index.html",
               "next-env.d.ts", "lib/api.generated.ts", "proto/user.pb.go",
-              "static/vendor.min.js", "design_handoff_donate/donate.jsx",
-              "storybook-static/index.html", ".turbo/cache.json"):
+              "static/vendor.min.js", "storybook-static/index.html",
+              ".turbo/cache.json"):
         assert reviewable([p]) == [], p
     # Things that merely look generated are not. Fixtures hide bad assumptions
     # and migrations are exactly where a review earns its keep.

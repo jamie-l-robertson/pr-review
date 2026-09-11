@@ -368,10 +368,10 @@ CONFIG_FILES = ("package.json", "tsconfig.json", "jsconfig.json", "vercel.json",
 CONFIG_SUFFIXES = (".config.js", ".config.ts", ".config.mjs", ".config.cjs",
                    ".config.json", ".config.yml", ".config.yaml")
 
-# Generated or frozen: the generator is what deserves review, not its output,
-# and a frozen bundle reviewed on its merits produces only false findings.
+# Generated: the generator is what deserves review, not its output. Nothing
+# repo-specific belongs here — this list ships to every consumer.
 GENERATED = ("__snapshots__/", "coverage/", "storybook-static/", ".turbo/",
-             "out/", ".svelte-kit/", "design_handoff", "__generated__/")
+             "out/", ".svelte-kit/", "__generated__/")
 GENERATED_SUFFIXES = (".min.js", ".min.css", ".pb.go", "_pb2.py", ".gen.ts",
                       ".gen.go", "next-env.d.ts")
 GENERATED_MARKERS = (".generated.", ".gen.")
