@@ -352,7 +352,9 @@ def reported_already():
             "that is now fixed.\n" + "\n".join(lines))
 
 
-def call_claude(prompt):
+def call_claude(prompt, client=None):
+    """client is injectable so the loop and its wrap-up can be tested without
+    spending anything — the interesting logic is plumbing, not the model."""
     import anthropic
     from anthropic import beta_tool
 
@@ -360,7 +362,7 @@ def call_claude(prompt):
     from models import CATEGORIES, ReviewResult
     assert set(CATEGORIES), "categories must not be empty"
 
-    client = anthropic.Anthropic()
+    client = client or anthropic.Anthropic()
     kit = [beta_tool(f) for f in (repo_tools.read_file, repo_tools.search,
                                   repo_tools.list_files, repo_tools.history)]
 

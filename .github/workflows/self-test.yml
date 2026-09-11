@@ -19,5 +19,7 @@ jobs:
       - name: Install pydantic for the model checks
         run: pip install --quiet pydantic
       - run: python review/test_checks.py
+      - name: Wrap-up path (fake client, no API calls)
+        run: python review/test_wrapup.py
       - name: Compile all scripts
         run: python -m compileall -q review
