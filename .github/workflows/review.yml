@@ -38,6 +38,10 @@ on:
           packageManager, which is the better place for it.
         type: string
         default: "10"
+      skillspector-ref:
+        description: Git ref of NVIDIA/SkillSpector to install. Pin it; it is not on PyPI.
+        type: string
+        default: v2.11.2
       react-doctor-version:
         description: react-doctor version to run, or "latest".
         type: string
@@ -147,11 +151,11 @@ jobs:
         run: python .pr-review/review/detect.py
 
       - uses: pnpm/action-setup@v4
-        if: steps.detect.outputs.run_eslint == 'true'
+        if: steps.detect.outputs.run_eslint == 'true' || steps.detect.outputs.run_audit == 'true'
         with:
           version: ${{ inputs.pnpm-version }}
       - uses: actions/setup-node@v6
-        if: steps.detect.outputs.run_eslint == 'true'
+        if: steps.detect.outputs.run_eslint == 'true' || steps.detect.outputs.run_audit == 'true'
         with:
           node-version: 22
           cache: pnpm
@@ -164,6 +168,15 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           ${{ inputs.lint-command || format('pnpm lint --format json -o {0}/eslint.json', runner.temp) }}
+
+      - name: Dependency audit
+        if: steps.detect.outputs.run_audit == 'true'
+        continue-on-error: true
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          # Only when the lockfile moved. Auditing the whole tree on every PR
+          # would report the same backlog forever and teach everyone to skip it.
+          pnpm audit --json > "$RUNNER_TEMP/audit.json"
 
       - name: SAST (semgrep)
         if: steps.detect.outputs.semgrep_configs != ''
@@ -183,6 +196,20 @@ jobs:
           xargs -a "$RUNNER_TEMP/react-files.txt" -r \
             npx --yes react-doctor@${{ inputs.react-doctor-version }} --format json \
             > "$RUNNER_TEMP/react-doctor.json"
+
+      - name: Agent-config review (SkillSpector)
+        if: steps.detect.outputs.run_skillspector == 'true'
+        continue-on-error: true
+        run: |
+          pip install --quiet uv
+          # Pinned: SkillSpector is not on PyPI, and installing a git HEAD would
+          # make this scanner itself an unpinned supply-chain dependency.
+          uv tool install --quiet \
+            "skillspector @ git+https://github.com/NVIDIA/skillspector.git@${{ inputs.skillspector-ref }}"
+          # --no-llm keeps it a static scan: no second model, no credentials.
+          xargs -a "$RUNNER_TEMP/agent-files.txt" -r \
+            uv tool run skillspector scan --no-llm --format json \
+            --output "$RUNNER_TEMP/skillspector.json"
 
       - name: PII scan
         continue-on-error: true
@@ -208,6 +235,8 @@ jobs:
           RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
           RAN_SEMGREP: ${{ steps.detect.outputs.semgrep_configs }}
           RAN_REACT_DOCTOR: ${{ steps.detect.outputs.run_react_doctor }}
+          RAN_SKILLSPECTOR: ${{ steps.detect.outputs.run_skillspector }}
+          RAN_AUDIT: ${{ steps.detect.outputs.run_audit }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |

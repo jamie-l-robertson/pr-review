@@ -235,6 +235,19 @@ def test_model_tiering():
         assert tier([p], 5) == "elevated", p
 
 
+
+def test_agent_config_paths_are_recognised():
+    from detect import AGENT_PATHS
+    def hit(p):
+        return any(a in p.lower() for a in AGENT_PATHS)
+    # Hooks run, MCP servers get launched, instruction files steer agents.
+    for p in (".mcp.json", ".claude/settings.json", ".cursor/hooks.json",
+              ".cursor/mcp.json", "AGENTS.md", "CLAUDE.md", "docs/SKILL.md"):
+        assert hit(p), p
+    for p in ("lib/a.ts", "app/page.tsx", "README.md", "db/schema/x.ts"):
+        assert not hit(p), p
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
