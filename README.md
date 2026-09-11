@@ -69,6 +69,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
+| `max-iterations` | `5` | Tool-use turns. Cost grows with the square of this. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
 | `skillspector-ref` | `v2.11.2` | Pinned; SkillSpector is not on PyPI. |
 | `react-doctor-version` | `latest` | Pin it if `latest` ever surprises you. |
@@ -300,6 +301,34 @@ The blast radius is small by construction: the model's only output is a fixed JS
 schema that becomes comments. It has no tools and cannot touch the repo. Fork PRs
 get no review at all, so reaching this at all requires push access — the realistic
 vector is a dependency-update branch or vendored third-party content, not a stranger.
+
+## What a run costs
+
+Measured on a real 24-file PR, elevated tier:
+
+| | |
+|---|---|
+| Input (1x) | 1,009,539 → $5.05 |
+| Cache reads (0.1x) | 2,546,048 → $1.27 |
+| Cache writes (2x) | 80,179 → $0.80 |
+| Output | 19,201 → $0.48 |
+| **Total** | **~$7.60** |
+
+That was at 40 turns. Every turn replays the whole conversation, so loop cost grows
+roughly with the square of the turn count — the exploration that makes the reviewer
+better is also what makes it expensive, and the two cannot be separated by tuning
+the prompt.
+
+`max-iterations` defaults to **5** for that reason — a handful of targeted reads,
+not a tour of the repo. Raise it only if findings look thin, and read the cost line
+in the log when you do. The cap is the only real control: a mid-loop bail does not
+work, because the findings only exist in the final message.
+
+Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR it
+means the reviewer is being cut off mid-thought rather than finishing early, and
+the cap is costing you findings.
+
+Caching saved roughly $10 on that run. It is not optional at this scale.
 
 ## Caching
 

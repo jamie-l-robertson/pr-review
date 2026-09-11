@@ -23,7 +23,16 @@ NO_POST = bool(os.environ.get("NO_POST"))
 # A run that wants to leave 40 comments has misunderstood the diff, not found
 # 40 bugs. Cap it and say so rather than burying the author.
 MAX_COMMENTS = 20
-MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 40)
+# Every turn replays the whole conversation, so loop cost grows roughly with the
+# square of the turn count. At 40 a real PR cost $7.60 and a million input
+# tokens. Cutting this is the one knob that bounds it; a mid-loop bail is worse,
+# because the findings only exist in the final message.
+#
+# 5 buys a handful of targeted reads, not a tour of the repo. That is a
+# deliberate trade: cheaper runs, and a reviewer that must spend its reads well.
+# Watch the "hit the N-turn cap" line — if it appears on every PR, the reviewer
+# is being cut off mid-thought rather than finishing early.
+MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 5)
 
 # GitHub comments take no arbitrary colour, but these render everywhere the
 # comment does — web, mobile, email notifications — with no external image.
@@ -395,6 +404,10 @@ def call_claude(prompt):
     if last.stop_reason == "refusal":
         raise SystemExit("Claude declined to review this diff: {}".format(last.stop_details))
 
+    if calls >= MAX_ITERATIONS:
+        print("hit the {}-turn cap — the review may be partial; raise "
+              "MAX_ITERATIONS if findings look thin".format(MAX_ITERATIONS),
+              file=sys.stderr)
     print("model {} ({} tier)  tokens in/out: {}/{}  cache write/read: {}/{}  "
           "tool calls: {}".format(MODEL, os.environ.get("TIER", "?"), usage_in,
                                   usage_out, cache_w, cache_r, calls), file=sys.stderr)
