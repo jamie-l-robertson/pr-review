@@ -283,6 +283,20 @@ def test_touched_since_needs_real_evidence():
     assert touched_since("review/review.py", "HEAD") is False
 
 
+def test_paths_are_made_relative_to_the_working_directory():
+    from detect import rel_to_workdir
+    # Repo root is the app root: nothing to strip.
+    assert rel_to_workdir("lib/a.ts", ".") == "lib/a.ts"
+    assert rel_to_workdir("lib/a.ts", "") == "lib/a.ts"
+    # App in a subdirectory: the check steps run there, git reports from above.
+    assert rel_to_workdir("app/lib/a.ts", "app") == "lib/a.ts"
+    assert rel_to_workdir("app/lib/a.ts", "app/") == "lib/a.ts"
+    # A path outside the working directory is left alone rather than mangled.
+    assert rel_to_workdir("docs/a.md", "app") == "docs/a.md"
+    # A directory that merely shares a prefix must not be stripped.
+    assert rel_to_workdir("application/a.ts", "app") == "application/a.ts"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

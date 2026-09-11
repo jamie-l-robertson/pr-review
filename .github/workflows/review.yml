@@ -179,7 +179,10 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
         run: |
           pnpm install --frozen-lockfile
-          ${{ inputs.lint-command || format('pnpm lint --format json -o {0}/eslint.json', runner.temp) }}
+          # Only the changed files. Linting the whole repo made the step exit 1
+          # on debt nobody on this PR wrote, so a red step meant nothing and a
+          # newly introduced error was invisible among the existing ones.
+          ${{ inputs.lint-command || format('xargs -a {0}/lint-files.txt -r pnpm exec eslint --format json -o {0}/eslint.json --', runner.temp) }}
 
       - name: Dependency audit
         if: steps.detect.outputs.run_audit == 'true'

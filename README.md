@@ -185,7 +185,7 @@ SCSS-only PR skips `pnpm install` entirely.
 
 | In the diff | Runs |
 |---|---|
-| `.ts .tsx .js .jsx .mjs .cjs` | ESLint + semgrep `p/typescript` `p/react` `p/owasp-top-ten` |
+| `.ts .tsx .js .jsx .mjs .cjs` | ESLint **on the changed files only** + semgrep `p/typescript` `p/react` `p/owasp-top-ten` |
 | `.tsx .jsx` | react-doctor, on the changed components only |
 | `.claude/` `.cursor/` `.mcp.json` `SKILL.md` `AGENTS.md` `CLAUDE.md` | SkillSpector |
 | `.py` `.go` `.rb` `.php` `.java` `.sql` `.tf` | the matching semgrep ruleset |
@@ -356,6 +356,19 @@ Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR, wi
 lots of files marked `not-reviewed`, the cap is costing you findings.
 
 Caching saved roughly $10 on that run. It is not optional at this scale.
+
+## Lint is scoped to the diff
+
+ESLint runs against the changed files, not the repo. Linting everything made the
+step exit 1 on debt nobody on the PR wrote — so a red step meant nothing, and an
+error the PR actually introduced was invisible among the existing ones. Scoped, a
+red lint step means *this change* broke something.
+
+It also shrinks the report the reviewer reads: 155KB across 443 files became 12KB
+across 2 on a real PR.
+
+Paths are relativised to `working-directory` before the tools see them, since git
+reports from the repo root and those steps run in the app directory.
 
 ## Check output is compacted first
 
