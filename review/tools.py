@@ -13,11 +13,16 @@ import os
 import subprocess
 
 ROOT = os.path.realpath(os.getcwd())
-# Every tool result is replayed on each later turn of the loop, so an oversized
-# one is not paid for once but once per remaining turn. Keep them tight and make
-# the model ask again for more.
+# Every tool result is replayed on each later turn, so an oversized one is paid
+# for once per remaining turn. That argued for small reads — but with the loop
+# capped at 5 turns, a 313-line component took two of them, and the files most
+# likely to hide a defect are the long ones.
+#
+# 400 lines is the better trade: cost grows with the SQUARE of the turn count
+# and only linearly with result size, so one big read beats two turns. It also
+# covers almost any file in a repo that caps its own files at 400 lines.
 MAX_BYTES = 60_000
-MAX_LINES = 200
+MAX_LINES = 400
 MAX_HITS = 40
 
 

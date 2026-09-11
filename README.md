@@ -329,6 +329,11 @@ roughly with the square of the turn count — the exploration that makes the rev
 better is also what makes it expensive, and the two cannot be separated by tuning
 the prompt.
 
+One read returns up to 400 lines. That is deliberately generous against a 5-turn
+budget: cost grows with the **square** of the turn count but only linearly with
+result size, so a single large read is cheaper than a second turn. It also covers
+almost any file in a repo that caps its own files at 400 lines.
+
 `max-iterations` defaults to **5** for that reason — a handful of targeted reads,
 not a tour of the repo. Raise it only if findings look thin, and read the cost line
 in the log when you do. The cap is the only real control: a mid-loop bail does not
