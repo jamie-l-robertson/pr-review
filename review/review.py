@@ -357,7 +357,24 @@ def commentable_lines(base):
 
 # Files that cannot hold a defect worth a review. A PR touching only these is
 # not worth a model call at all.
-INERT = (".md", ".txt", ".json", ".lock", ".svg", ".png", ".jpg", ".webp", ".ico")
+INERT = (".md", ".txt", ".json", ".lock", ".svg", ".png", ".jpg", ".webp", ".ico",
+         ".gif", ".woff", ".woff2", ".ttf", ".pdf", ".snap")
+
+# Config is JSON but is not inert: a new dependency is a supply-chain decision,
+# and a compiler or framework setting changes how everything else behaves.
+# pnpm audit catches a known CVE; it has no view on why a package is there.
+CONFIG_FILES = ("package.json", "tsconfig.json", "jsconfig.json", "vercel.json",
+                "tsconfig.base.json", "turbo.json", "nx.json", "deno.json")
+CONFIG_SUFFIXES = (".config.js", ".config.ts", ".config.mjs", ".config.cjs",
+                   ".config.json", ".config.yml", ".config.yaml")
+
+# Generated or frozen: the generator is what deserves review, not its output,
+# and a frozen bundle reviewed on its merits produces only false findings.
+GENERATED = ("__snapshots__/", "coverage/", "storybook-static/", ".turbo/",
+             "out/", ".svelte-kit/", "design_handoff", "__generated__/")
+GENERATED_SUFFIXES = (".min.js", ".min.css", ".pb.go", "_pb2.py", ".gen.ts",
+                      ".gen.go", "next-env.d.ts")
+GENERATED_MARKERS = (".generated.", ".gen.")
 
 # CI and agent configuration. The deterministic checks still cover these —
 # semgrep p/github-actions on workflows, SkillSpector on hooks and MCP config —
@@ -376,7 +393,18 @@ def reviewable(paths):
     out = []
     for p in paths:
         low = p.lower()
-        if low.endswith(INERT) or any(low.startswith(d) for d in CONFIG_DIRS):
+        name = os.path.basename(low)
+        if any(low.startswith(d) for d in CONFIG_DIRS):
+            continue
+        if any(g in low for g in GENERATED) or low.endswith(GENERATED_SUFFIXES):
+            continue
+        if any(m in name for m in GENERATED_MARKERS):
+            continue
+        # Config earns review even though it is JSON.
+        if name in CONFIG_FILES or low.endswith(CONFIG_SUFFIXES):
+            out.append(p)
+            continue
+        if low.endswith(INERT):
             continue
         out.append(p)
     return out

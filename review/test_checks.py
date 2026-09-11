@@ -412,6 +412,33 @@ def test_reviewable_filters_rather_than_merely_gating():
         == ["lib/a.ts"]
 
 
+
+def test_config_json_is_reviewed_even_though_json_is_inert():
+    from review import reviewable
+    # A new dependency is a supply-chain decision and a compiler setting changes
+    # how everything else behaves. pnpm audit catches a known CVE; it has no
+    # view on why a package is there.
+    for p in ("package.json", "tsconfig.json", "vercel.json", "next.config.ts",
+              "vitest.config.ts", "eslint.config.mjs"):
+        assert reviewable([p]) == [p], p
+    # Ordinary JSON data stays inert.
+    assert reviewable(["db/migrations/meta/0001_snapshot.json"]) == []
+
+
+def test_generated_and_frozen_files_are_not_reviewed():
+    from review import reviewable
+    for p in ("app/__snapshots__/Nav.snap", "lib/a.snap", "coverage/index.html",
+              "next-env.d.ts", "lib/api.generated.ts", "proto/user.pb.go",
+              "static/vendor.min.js", "design_handoff_donate/donate.jsx",
+              "storybook-static/index.html", ".turbo/cache.json"):
+        assert reviewable([p]) == [], p
+    # Things that merely look generated are not. Fixtures hide bad assumptions
+    # and migrations are exactly where a review earns its keep.
+    for p in ("e2e/fixtures.ts", "db/migrations/0018_backfill.sql",
+              "lib/generateSlug.ts", ".env.example"):
+        assert reviewable([p]) == [p], p
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

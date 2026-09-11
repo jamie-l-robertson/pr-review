@@ -167,8 +167,27 @@ rather than silently widen the diff — whether to fix it too is the author's ca
 
 ## What the model is not shown
 
-`.github/`, `.claude/`, `.cursor/`, `.superpowers/`, `.codex/`, `.vscode/` and
-`.idea/` are excluded from the review, along with docs and binary assets. They
+Excluded from the review:
+
+| | |
+|---|---|
+| `.github/` `.claude/` `.cursor/` `.superpowers/` `.codex/` `.vscode/` `.idea/` | CI and agent config |
+| `__snapshots__/` `*.snap` | test-runner output — a recording of behaviour, not the behaviour |
+| `*.generated.*` `*.gen.*` `*.pb.go` `*_pb2.py` `next-env.d.ts` | codegen; review the generator instead |
+| `*.min.js` `*.min.css` | unreviewable by construction |
+| `coverage/` `storybook-static/` `.turbo/` `out/` `.svelte-kit/` | build output that sometimes gets committed |
+| `design_handoff*` | frozen bundles that reference components which no longer exist |
+| docs, images, fonts, PDFs | not code |
+
+**Config is not inert, even though it is JSON.** `package.json`, `tsconfig.json`,
+`vercel.json` and anything `*.config.*` stay in: a new dependency is a
+supply-chain decision and a compiler setting changes how everything else
+behaves. `pnpm audit` catches a known CVE — it has no view on why a package is
+there.
+
+Deliberately still reviewed: test fixtures, migrations and `.env.example`.
+Fixtures are where bad assumptions hide, and `.env.example` is exactly where a
+real secret gets pasted by accident. They
 change for reasons a code reviewer has no view on — a pin bump, a hook tweak — and
 a one-line workflow edit was pulling a full review every time.
 
