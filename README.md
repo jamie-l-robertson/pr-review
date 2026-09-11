@@ -256,8 +256,15 @@ place on each push rather than reposted.
 On each push the reviewer closes its own stale threads, but only when **both**
 signals agree:
 
-1. GitHub has marked the thread **outdated** — the anchored code actually changed.
+1. The file has changed since the comment was written, or GitHub has marked the
+   thread outdated.
 2. This run no longer reports an equivalent finding.
+
+GitHub's `outdated` flag alone is not enough: it only trips when the anchored hunk
+disappears, so fixing a defect by editing *around* it — adding the assertions a
+test was missing, say — leaves the thread looking current forever. Asking git
+whether the file moved at all since the comment's commit catches the ordinary case.
+A commit that no longer exists after a force-push counts as no evidence.
 
 Either signal alone is not enough. A model omitting a finding is not evidence the
 bug was fixed — it may simply not have mentioned it this time — and on its own that
