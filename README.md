@@ -3,9 +3,9 @@
 AI pull-request review for GitHub, with deterministic checks in front of it.
 
 On every PR it runs secret scanning, lint, SAST and a PII scan — **routed by the
-languages actually present in the diff** — then hands Claude the diff, the full
-contents of every changed file, one hop of imports in each direction, the check
-output and the repo's own conventions. Findings come back as inline review comments.
+languages actually present in the diff** — then hands Claude the diff, the check output and the repo's own conventions — and
+lets it read the rest of the checkout itself through read-only tools. Findings come
+back as inline review comments.
 
 ## Use it
 
@@ -64,7 +64,9 @@ That's the whole setup — no scripts to copy, no config file.
 | Input | Default | |
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
-| `model` | `claude-opus-5` | Any Anthropic model id. |
+| `model` | *(auto)* | Pin a model id to override the tiering below. |
+| `routine-model` | `claude-sonnet-5` | Small, low-risk diffs. |
+| `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
@@ -79,6 +81,25 @@ A repo with the app in a subdirectory:
     with:
       working-directory: app
 ```
+
+## Which model runs
+
+Picked from the diff, because most PRs do not need the expensive model and the
+ones that do are recognisable up front:
+
+| Condition | Model |
+|---|---|
+| More than 15 files, or more than 400 added lines | elevated |
+| Touches auth, session, token, payment, admin, db, schema, migration, `/api/`, proxy, middleware, rate limiting, or `.github/` | elevated |
+| Anything else | routine |
+
+A routine review says so in its footer, so a cheaper review is never a silent one,
+and the run log names the model and tier. Set the `model` input to pin one and skip
+the routing entirely.
+
+This is tuned on judgement, not measurement — the thresholds are a guess at where
+risk starts. Watch whether routine reviews start missing things you care about, and
+move the line if they do.
 
 ## Thoroughness
 
@@ -129,7 +150,7 @@ so explicitly — an invented finding costs more than a missed one.
 
 ## What blocks and what doesn't
 
-**gitleaks is a hard gate.** If the diff contains a credential the job fails there
+**betterleaks is a hard gate.** If the diff contains a credential the job fails there
 and nothing is sent to the Anthropic API — that ordering is the point of the design,
 not just a cost saving.
 
@@ -148,7 +169,7 @@ SCSS-only PR skips `pnpm install` entirely.
 | `.py` `.go` `.rb` `.php` `.java` `.sql` `.tf` | the matching semgrep ruleset |
 | `.yml .yaml` under `.github/` | semgrep `p/github-actions` |
 | anything else | agent review only |
-| always | gitleaks + PII |
+| always | betterleaks + PII |
 
 Unknown extensions contribute nothing rather than failing.
 
@@ -164,7 +185,7 @@ Nothing is vendored into this repo, deliberately:
 
 | Tool | Source | Pinned |
 |---|---|---|
-| gitleaks | binary from its GitHub release | `GITLEAKS_VERSION` in the workflow |
+| betterleaks | binary from its GitHub release, **sha256-verified against the published checksums** | `BETTERLEAKS_VERSION` |
 | semgrep | pip, rules pulled from the public registry | `SEMGREP_VERSION` |
 | ESLint | **the consuming repo's own `node_modules`** | that repo's lockfile |
 | anthropic SDK | pip | `ANTHROPIC_SDK_VERSION` |

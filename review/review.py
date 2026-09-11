@@ -23,6 +23,7 @@ NO_POST = bool(os.environ.get("NO_POST"))
 # A run that wants to leave 40 comments has misunderstood the diff, not found
 # 40 bugs. Cap it and say so rather than burying the author.
 MAX_COMMENTS = 20
+MAX_ITERATIONS = int(os.environ.get("MAX_ITERATIONS") or 40)
 
 # GitHub comments take no arbitrary colour, but these render everywhere the
 # comment does — web, mobile, email notifications — with no external image.
@@ -46,49 +47,6 @@ DRY_RUN = bool(os.environ.get("DRY_RUN"))
 
 IMPORT_RX = re.compile(r"""(?:from|import)\s+['"]([^'"]+)['"]""")
 TS_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs")
-
-SCHEMA = {
-    "type": "object",
-    "properties": {
-        "summary": {"type": "string"},
-        "files_reviewed": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "verdict": {"type": "string",
-                                "enum": ["clean", "defects-reported", "not-reviewed"]},
-                },
-                "required": ["path", "verdict"],
-                "additionalProperties": False,
-            },
-        },
-        "findings": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "path": {"type": "string"},
-                    "line": {"type": "integer"},
-                    "severity": {"type": "string", "enum": ["blocker", "major", "minor", "nit"]},
-                    "remedy": {"type": "string"},
-                    "category": {"type": "string", "enum": [
-                        "security", "cybersecurity", "performance", "accessibility",
-                        "usability", "code-quality", "testing", "ai-safety",
-                        "prompt-injection",
-                    ]},
-                    "body": {"type": "string"},
-                },
-                "required": ["id", "path", "line", "severity", "category", "body", "remedy"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    "required": ["summary", "findings", "files_reviewed"],
-    "additionalProperties": False,
-}
 
 SYSTEM = """You are reviewing a pull request. Report only defects you can point at in \
 the diff, plus violations of the project conventions quoted below.
@@ -322,40 +280,41 @@ def commentable_lines(base):
     return out
 
 
+# Files that cannot hold a defect worth a review. A PR touching only these is
+# not worth a model call at all.
+INERT = (".md", ".txt", ".json", ".lock", ".svg", ".png", ".jpg", ".webp", ".ico")
+
+
+def worth_reviewing(paths):
+    return [p for p in paths if not p.lower().endswith(INERT)]
+
+
 def build_prompt(base):
+    """The diff and what was already checked — not the whole repo.
+
+    Full file contents and one-hop neighbours used to be packed in here, ~190k
+    tokens a run, chosen up front and capped. The reviewer now reads what it
+    needs through tools, so this only has to point it at the right place."""
     paths = changed_files(base)
     if not paths:
         return None, []
+    if not worth_reviewing(paths):
+        print("nothing but docs and assets in this diff; skipping the call",
+              file=sys.stderr)
+        return None, []
     diff = git("diff", "--unified=3", base + "...HEAD", "--", *paths)
 
-    blocks = ["# Changed files — report on each one, or assert it is correct\n"
-              + "\n".join("- " + p for p in paths),
-              "# Diff under review\n" + fenced(diff, "diff")]
-    used = len(diff)
-
-    blocks.append("# Full contents of changed files (post-change)")
-    for p in paths:
-        text = read(p)
-        if text is None:
-            continue
-        if used + len(text) > BUDGET:
-            blocks.append("(remaining changed files omitted — context budget reached)")
-            break
-        used += len(text)
-        blocks.append("## {}\n{}".format(p, fenced(text)))
-
-    nb = neighbours(paths, alias_root_for(WORKDIR))
-    if nb:
-        blocks.append("# Neighbouring files (not changed — context only)")
-    for p in nb:
-        text = read(p, 8_000)
-        if text is None or used + len(text) > BUDGET:
-            break
-        used += len(text)
-        blocks.append("## {}\n{}".format(p, fenced(text)))
-
-    blocks.append("# Pre-check findings (noisy — verify before repeating)\n" + findings_context())
-    blocks.append(reported_already())
+    blocks = [
+        "# Changed files — every one needs a verdict\n"
+        + "\n".join("- " + p for p in paths),
+        "# Diff under review\n" + fenced(diff, "diff"),
+        "# Pre-check findings (noisy — verify before repeating)\n" + findings_context(),
+        reported_already(),
+        "Read whatever you need with the tools before answering: open the changed "
+        "files in full, follow their callers and callees, check whether a test "
+        "covers the behaviour, look at a file's history when a change looks "
+        "deliberate. Do not guess at code you have not opened.",
+    ]
     return "\n\n".join(blocks), paths
 
 
@@ -381,47 +340,67 @@ def reported_already():
 
 def call_claude(prompt):
     import anthropic
+    from anthropic import beta_tool
+
+    import tools as repo_tools
+    from models import CATEGORIES, ReviewResult
+    assert set(CATEGORIES), "categories must not be empty"
 
     client = anthropic.Anthropic()
-    output_config = {"format": {"type": "json_schema", "schema": SCHEMA}}
-    if "haiku" not in MODEL and "sonnet-4-5" not in MODEL:
-        # effort is rejected outright on Haiku 4.5 / Sonnet 4.5 — a 400, not a warning.
-        output_config["effort"] = EFFORT
+    kit = [beta_tool(f) for f in (repo_tools.read_file, repo_tools.search,
+                                  repo_tools.list_files, repo_tools.history)]
 
-    # Streamed, and with far more room than the findings need: at xhigh effort
-    # thinking tokens count toward max_tokens, and 16000 truncated the JSON
-    # mid-string — which surfaced as a JSONDecodeError, not as "ran out of room".
-    resp = client.messages.stream(
+    runner = client.beta.messages.tool_runner(
         model=MODEL,
         max_tokens=32000,
-        # The system block is byte-identical on every run in a repo, so it is the
-        # one part of the request worth a cache breakpoint. Everything after it
-        # (the diff, the file contents) changes per push.
-        # 1h TTL, not the 5m default: runs on a PR land ten to fifteen minutes
-        # apart, so every 5m write expired before the next run could read it —
-        # observed as cache write/read 2907/0 on every run. A 1h write costs 2x
-        # instead of 1.25x, so this is only worth it if reads now land; the
-        # counters below are logged for exactly that reason.
+        # Enough rope to open the changed files and follow a few threads, not
+        # enough to wander the repo until the budget is gone.
+        max_iterations=MAX_ITERATIONS,
         system=[{"type": "text", "text": SYSTEM + "\n\n" + house_rules(),
                  "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
-        output_config=output_config,
-        messages=[{"role": "user", "content": prompt}],
+        tools=kit,
+        output_format=ReviewResult,
+        # The diff is re-sent on every turn of the loop, so it earns a breakpoint
+        # of its own: without one, an eight-turn review pays full price for the
+        # same bundle eight times.
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt,
+             "cache_control": {"type": "ephemeral", "ttl": "1h"}}]}],
+        # max_tokens this high estimates past the SDK's 10-minute non-streaming
+        # ceiling, so the runner must stream.
+        stream=True,
     )
-    with resp as stream:
-        resp = stream.get_final_message()
-    if resp.stop_reason == "max_tokens":
+
+    last, calls, usage_in, usage_out, cache_r, cache_w = None, 0, 0, 0, 0, 0
+    for turn in runner:
+        message = turn.get_final_message()
+        last = message
+        u = getattr(message, "usage", None)
+        if u:
+            usage_in += u.input_tokens or 0
+            usage_out += u.output_tokens or 0
+            cache_w += getattr(u, "cache_creation_input_tokens", 0) or 0
+            cache_r += getattr(u, "cache_read_input_tokens", 0) or 0
+        calls += sum(1 for b in message.content if b.type == "tool_use")
+
+    if last is None:
+        raise SystemExit("the model returned nothing")
+    if last.stop_reason == "max_tokens":
+        raise SystemExit("hit max_tokens before finishing — lower EFFORT (now {})".format(EFFORT))
+    if last.stop_reason == "refusal":
+        raise SystemExit("Claude declined to review this diff: {}".format(last.stop_details))
+
+    print("model {} ({} tier)  tokens in/out: {}/{}  cache write/read: {}/{}  "
+          "tool calls: {}".format(MODEL, os.environ.get("TIER", "?"), usage_in,
+                                  usage_out, cache_w, cache_r, calls), file=sys.stderr)
+
+    parsed = getattr(last, "parsed_output", None)
+    if parsed is None:
+        # The loop ran out of iterations before it produced its findings.
         raise SystemExit(
-            "the model hit max_tokens before finishing its findings — raise "
-            "max_tokens or lower EFFORT (currently {})".format(EFFORT))
-    if resp.stop_reason == "refusal":
-        raise SystemExit("Claude declined to review this diff: {}".format(resp.stop_details))
-    text = next(b.text for b in resp.content if b.type == "text")
-    u = resp.usage
-    print("tokens in/out: {}/{}  cache write/read: {}/{}".format(
-        u.input_tokens, u.output_tokens,
-        getattr(u, "cache_creation_input_tokens", 0) or 0,
-        getattr(u, "cache_read_input_tokens", 0) or 0), file=sys.stderr)
-    return json.loads(text)
+            "no structured output after {} iterations and {} tool calls — raise "
+            "MAX_ITERATIONS".format(MAX_ITERATIONS, calls))
+    return parsed.model_dump()
 
 
 def gh(*args, stdin=None):
@@ -690,7 +669,9 @@ def post(result, valid):
         comments = comments[:MAX_COMMENTS]
         body += "\n\n_{} further finding(s) withheld — a review this long usually means "\
                 "the diff was misread rather than that the code is this broken._".format(dropped)
-    body += "\n\n<sub>{} · {} finding(s)</sub>".format(NAME, len(result["findings"]))
+    body += "\n\n<sub>{} · {} finding(s){}</sub>".format(
+        NAME, len(result["findings"]),
+        " · routine review" if os.environ.get("TIER") == "routine" else "")
     payload = {"event": "COMMENT", "body": body, "comments": comments}
 
     path = "repos/{}/pulls/{}/reviews".format(REPO, PR)

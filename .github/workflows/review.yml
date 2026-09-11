@@ -8,7 +8,18 @@ on:
         type: string
         default: "."
       model:
-        description: Anthropic model id.
+        description: >-
+          Anthropic model id. Leave empty to pick by diff: the routine model for
+          small, low-risk changes and the elevated one for large diffs or any
+          diff touching auth, data, money, admin or CI.
+        type: string
+        default: ""
+      routine-model:
+        description: Model for small, low-risk diffs.
+        type: string
+        default: claude-sonnet-5
+      elevated-model:
+        description: Model for large or sensitive diffs.
         type: string
         default: claude-opus-5
       effort:
@@ -63,7 +74,7 @@ permissions:
   pull-requests: write
 
 env:
-  GITLEAKS_VERSION: 8.30.1
+  BETTERLEAKS_VERSION: 1.8.1
   SEMGREP_VERSION: 1.176.1
   ANTHROPIC_SDK_VERSION: 1.5.0
 
@@ -104,11 +115,18 @@ jobs:
 
       # HARD GATE. A diff carrying a live credential must not reach a third-party
       # API, so this runs before anything is assembled or sent.
-      - name: Scan for secrets (gitleaks)
+      - name: Scan for secrets (betterleaks)
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-          gitleaks git --log-opts="${{ steps.range.outputs.base }}..HEAD" --redact --no-banner
+          base="https://github.com/betterleaks/betterleaks/releases/download/v${BETTERLEAKS_VERSION}"
+          curl -sSfL -o bl.tar.gz "${base}/betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o checksums.txt "${base}/checksums.txt"
+          # Verify before extracting. The previous gitleaks step piped curl
+          # straight into tar, so the gate against supply-chain compromise was
+          # itself installed from an unverified download.
+          grep " betterleaks_${BETTERLEAKS_VERSION}_linux_x64.tar.gz$" checksums.txt | sha256sum -c -
+          tar -xz -C /usr/local/bin -f bl.tar.gz betterleaks
+          betterleaks git . --log-opts="${{ steps.range.outputs.base }}..HEAD" \
+            --redact --no-banner --exit-code 1
 
       - uses: actions/setup-python@v6
         with:
@@ -165,7 +183,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ steps.range.outputs.base }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          MODEL: ${{ inputs.model }}
+          MODEL: ${{ inputs.model || (steps.detect.outputs.tier == 'elevated' && inputs.elevated-model || inputs.routine-model) }}
+          TIER: ${{ steps.detect.outputs.tier }}
           EFFORT: ${{ inputs.effort }}
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
           RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
