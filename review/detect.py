@@ -33,6 +33,12 @@ SEMGREP = {
 ESLINT_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 REACT_EXTS = (".tsx", ".jsx")
 
+# Agent configuration is executable in practice: hooks run, MCP servers are
+# launched, instruction files steer coding agents. Nothing else in the pipeline
+# looks at any of it.
+AGENT_PATHS = (".claude/", ".cursor/", ".mcp.json", ".superpowers/", ".codex/",
+               ".github/copilot", "skill.md", "agents.md", "claude.md")
+
 # Paths where a missed defect is expensive: auth, data, money, admin, and the CI
 # that holds the keys to all of it. A diff touching these gets the better model
 # whatever its size.
@@ -79,6 +85,11 @@ def main():
 
     # react-doctor takes explicit paths, so it only ever sees the changed
     # components. Written to a file rather than an output to dodge quoting.
+    agent = [p for p in paths if any(a in p.lower() for a in AGENT_PATHS)]
+    with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"),
+                           "agent-files.txt"), "w") as fh:
+        fh.write("\n".join(agent))
+
     react = [p for p in paths if p.lower().endswith(REACT_EXTS)] if has_pkg else []
     tmp = os.environ.get("RUNNER_TEMP", "/tmp")
     with open(os.path.join(tmp, "react-files.txt"), "w") as fh:
@@ -93,6 +104,7 @@ def main():
         "semgrep_configs": " ".join("--config " + c for c in configs),
         "changed_count": str(len(paths)),
         "run_react_doctor": "true" if react else "false",
+        "run_skillspector": "true" if agent else "false",
         "tier": tier(paths, added),
         "added_lines": str(added),
     }

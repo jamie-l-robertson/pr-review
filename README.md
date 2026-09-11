@@ -70,6 +70,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
+| `skillspector-ref` | `v2.11.2` | Pinned; SkillSpector is not on PyPI. |
 | `react-doctor-version` | `latest` | Pin it if `latest` ever surprises you. |
 | `pnpm-version` | `10` | Only used when linting. Better set `packageManager` in your `package.json`. |
 | `lint-command` | autodetect | Override. Must write ESLint JSON to `$RUNNER_TEMP/eslint.json`. |
@@ -168,6 +169,7 @@ SCSS-only PR skips `pnpm install` entirely.
 |---|---|
 | `.ts .tsx .js .jsx .mjs .cjs` | ESLint + semgrep `p/typescript` `p/react` `p/owasp-top-ten` |
 | `.tsx .jsx` | react-doctor, on the changed components only |
+| `.claude/` `.cursor/` `.mcp.json` `SKILL.md` `AGENTS.md` `CLAUDE.md` | SkillSpector |
 | `.py` `.go` `.rb` `.php` `.java` `.sql` `.tf` | the matching semgrep ruleset |
 | `.yml .yaml` under `.github/` | semgrep `p/github-actions` |
 | anything else | agent review only |
@@ -189,6 +191,7 @@ Nothing is vendored into this repo, deliberately:
 |---|---|---|
 | betterleaks | binary from its GitHub release, **sha256-verified against the published checksums** | `BETTERLEAKS_VERSION` |
 | react-doctor | `npx`, Modified MIT | `react-doctor-version` (default `latest`) |
+| SkillSpector | `uv tool install` from git, Apache-2.0 | `skillspector-ref` (a tag, never a HEAD) |
 | semgrep | pip, rules pulled from the public registry | `SEMGREP_VERSION` |
 | ESLint | **the consuming repo's own `node_modules`** | that repo's lockfile |
 | anthropic SDK | pip | `ANTHROPIC_SDK_VERSION` |

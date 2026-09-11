@@ -38,6 +38,10 @@ on:
           packageManager, which is the better place for it.
         type: string
         default: "10"
+      skillspector-ref:
+        description: Git ref of NVIDIA/SkillSpector to install. Pin it; it is not on PyPI.
+        type: string
+        default: v2.11.2
       react-doctor-version:
         description: react-doctor version to run, or "latest".
         type: string
@@ -184,6 +188,20 @@ jobs:
             npx --yes react-doctor@${{ inputs.react-doctor-version }} --format json \
             > "$RUNNER_TEMP/react-doctor.json"
 
+      - name: Agent-config review (SkillSpector)
+        if: steps.detect.outputs.run_skillspector == 'true'
+        continue-on-error: true
+        run: |
+          pip install --quiet uv
+          # Pinned: SkillSpector is not on PyPI, and installing a git HEAD would
+          # make this scanner itself an unpinned supply-chain dependency.
+          uv tool install --quiet \
+            "skillspector @ git+https://github.com/NVIDIA/skillspector.git@${{ inputs.skillspector-ref }}"
+          # --no-llm keeps it a static scan: no second model, no credentials.
+          xargs -a "$RUNNER_TEMP/agent-files.txt" -r \
+            uv tool run skillspector scan --no-llm --format json \
+            --output "$RUNNER_TEMP/skillspector.json"
+
       - name: PII scan
         continue-on-error: true
         env:
@@ -208,6 +226,7 @@ jobs:
           RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
           RAN_SEMGREP: ${{ steps.detect.outputs.semgrep_configs }}
           RAN_REACT_DOCTOR: ${{ steps.detect.outputs.run_react_doctor }}
+          RAN_SKILLSPECTOR: ${{ steps.detect.outputs.run_skillspector }}
           MAX_REVIEWS_PER_PR: ${{ inputs.max-reviews-per-pr }}
           MAX_CONTEXT_BYTES: ${{ inputs.max-context-bytes }}
         run: |
