@@ -253,6 +253,7 @@ def findings_context():
     expected = {
         "ESLint": ("eslint.json", os.environ.get("RAN_ESLINT") == "true"),
         "Semgrep": ("semgrep.json", bool(os.environ.get("RAN_SEMGREP"))),
+        "React Doctor": ("react-doctor.json", os.environ.get("RAN_REACT_DOCTOR") == "true"),
         "PII scan": ("pii.json", True),
     }
     out, missing = [], []

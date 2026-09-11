@@ -31,6 +31,7 @@ SEMGREP = {
     ".dockerfile": ("p/dockerfile",),
 }
 ESLINT_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+REACT_EXTS = (".tsx", ".jsx")
 
 # Paths where a missed defect is expensive: auth, data, money, admin, and the CI
 # that holds the keys to all of it. A diff touching these gets the better model
@@ -76,6 +77,13 @@ def main():
     has_pkg = os.path.isfile(os.path.join(workdir, "package.json"))
     run_eslint, configs = route(paths, has_pkg)
 
+    # react-doctor takes explicit paths, so it only ever sees the changed
+    # components. Written to a file rather than an output to dodge quoting.
+    react = [p for p in paths if p.lower().endswith(REACT_EXTS)] if has_pkg else []
+    tmp = os.environ.get("RUNNER_TEMP", "/tmp")
+    with open(os.path.join(tmp, "react-files.txt"), "w") as fh:
+        fh.write("\n".join(react))
+
     numstat = git("diff", "--numstat", base_ref() + "...HEAD")
     added = sum(int(l.split("\t")[0]) for l in numstat.splitlines()
                 if l.split("\t")[0].isdigit())
@@ -84,6 +92,7 @@ def main():
         "run_eslint": "true" if run_eslint else "false",
         "semgrep_configs": " ".join("--config " + c for c in configs),
         "changed_count": str(len(paths)),
+        "run_react_doctor": "true" if react else "false",
         "tier": tier(paths, added),
         "added_lines": str(added),
     }
