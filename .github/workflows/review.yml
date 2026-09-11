@@ -61,7 +61,7 @@ on:
       max-reviews-per-pr:
         description: Stop reviewing a PR after this many reviews. 0 disables the cap.
         type: number
-        default: 10
+        default: 5
       lint-command:
         description: Overrides autodetection. Must write ESLint JSON to $RUNNER_TEMP/eslint.json.
         type: string

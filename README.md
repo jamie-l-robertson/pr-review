@@ -71,7 +71,7 @@ That's the whole setup — no scripts to copy, no config file.
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-iterations` | `5` | Tool-use turns. Cost grows with the square of this. |
-| `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
+| `max-reviews-per-pr` | `5` | Stop after this many reviews on one PR. `0` disables. |
 | `skillspector-ref` | `v2.11.2` | Pinned; SkillSpector is not on PyPI. |
 | `react-doctor-version` | `latest` | Pin it if `latest` ever surprises you. |
 | `pnpm-version` | `10` | Only used when linting. Better set `packageManager` in your `package.json`. |
@@ -296,8 +296,8 @@ them as **Outdated** on its own.
 Put `[skip review]` in the PR title. The job is skipped entirely — no checks, no
 API call. Draft PRs are skipped for the same reason.
 
-It also stops on its own after `max-reviews-per-pr` reviews, so a PR you push to
-thirty times does not cost thirty reviews, and it posts at most 20 inline comments
+It also stops on its own after `max-reviews-per-pr` reviews — five by default — so
+a PR you push to thirty times does not cost thirty reviews, and it posts at most 20 inline comments
 per run — a review wanting to leave forty has misread the diff, not found forty bugs.
 
 ## Untrusted input
@@ -344,6 +344,18 @@ Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR, wi
 lots of files marked `not-reviewed`, the cap is costing you findings.
 
 Caching saved roughly $10 on that run. It is not optional at this scale.
+
+## Auditing the prompt
+
+The system block is cached with a 1h TTL and read back at 0.1x, so **trimming it
+saves almost nothing** — a run's tokens go on the conversation and the tool
+results, not the instructions. Accuracy is what matters there, and a stale
+instruction is expensive in a way length is not: the prompt claimed "you are given
+the whole file and its neighbours" long after the tool loop replaced the bundle,
+which invited the model to reason about files it had never opened.
+
+If you change what the reviewer is given, change what the prompt says it is given,
+in the same commit.
 
 ## Caching
 
