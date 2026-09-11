@@ -714,7 +714,9 @@ def post(result, valid):
                 "the diff was misread rather than that the code is this broken._".format(dropped)
     body += "\n\n<sub>{} · {} finding(s){}</sub>".format(
         NAME, len(result["findings"]),
-        " · routine review" if os.environ.get("TIER") == "routine" else "")
+        {"routine": " · routine review",
+         "test": " · ⚠️ pipeline test run, not a real review"}.get(
+             os.environ.get("TIER", ""), ""))
     payload = {"event": "COMMENT", "body": body, "comments": comments}
 
     path = "repos/{}/pulls/{}/reviews".format(REPO, PR)

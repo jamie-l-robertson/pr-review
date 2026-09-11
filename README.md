@@ -65,7 +65,8 @@ That's the whole setup — no scripts to copy, no config file.
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | *(auto)* | Pin a model id to override the tiering below. |
-| `routine-model` | `claude-sonnet-5` | Small, low-risk diffs. |
+| `routine-model` | `claude-opus-5` | Small, low-risk diffs. Set `claude-sonnet-5` to trade depth for cost. |
+| `test-model` | `claude-haiku-4-5` | Used when the PR title contains `[test review]`. |
 | `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
@@ -95,10 +96,19 @@ ones that do are recognisable up front:
 | More than 15 files, or more than 400 added lines | elevated |
 | Touches auth, session, token, payment, admin, db, schema, migration, `/api/`, proxy, middleware, rate limiting, or `.github/` | elevated |
 | Anything else | routine |
+| PR title contains `[test review]` | **test** — overrides both |
 
 A routine review says so in its footer, so a cheaper review is never a silent one,
 and the run log names the model and tier. Set the `model` input to pin one and skip
 the routing entirely.
+
+**`[test review]` in the PR title** forces the cheapest model. Use it when you are
+exercising the pipeline — a pin bump, a new pre-check, a workflow change — rather
+than reviewing the code. Those runs are marked in the footer as a pipeline test so
+their findings are never mistaken for a real review.
+
+Both tiers default to Opus. The routing still exists, so setting `routine-model` to
+`claude-sonnet-5` restores the cheaper path for small diffs in one line.
 
 This is tuned on judgement, not measurement — the thresholds are a guess at where
 risk starts. Watch whether routine reviews start missing things you care about, and
