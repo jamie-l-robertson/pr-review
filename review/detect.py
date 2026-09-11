@@ -50,6 +50,18 @@ BIG_FILES = 15
 BIG_LINES = 400
 
 
+def rel_to_workdir(path, workdir):
+    """Repo-root path -> path relative to where the check steps run.
+
+    git reports from the repo root; eslint and react-doctor run in the working
+    directory. Those are the same place only when the app is not in a
+    subdirectory."""
+    prefix = (workdir or ".").rstrip("/") + "/"
+    if prefix == "./" or not path.startswith(prefix):
+        return path
+    return path[len(prefix):]
+
+
 def tier(paths, added):
     """-> "elevated" or "routine". Pure, so the routing is testable without a diff."""
     if len(paths) > BIG_FILES or added > BIG_LINES:
@@ -91,22 +103,28 @@ def main():
     raw = git("diff", "--name-only", base_ref() + "...HEAD").splitlines()
     deps_changed = any(os.path.basename(p) in LOCKFILES for p in raw)
 
-    agent = [p for p in paths if any(a in p.lower() for a in AGENT_PATHS)]
-    with open(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"),
-                           "agent-files.txt"), "w") as fh:
-        fh.write("\n".join(agent))
+    # Tools that take explicit paths see only the changed files. Paths are made
+    # relative to the working directory, because that is where those steps run —
+    # git reports from the repo root, a different place when the app sits in a
+    # subdirectory. Written to files rather than step outputs to dodge quoting.
+    def rel(p):
+        return rel_to_workdir(p, workdir)
 
-    react = [p for p in paths if p.lower().endswith(REACT_EXTS)] if has_pkg else []
     tmp = os.environ.get("RUNNER_TEMP", "/tmp")
-    with open(os.path.join(tmp, "react-files.txt"), "w") as fh:
-        fh.write("\n".join(react))
+    agent = [p for p in paths if any(a in p.lower() for a in AGENT_PATHS)]
+    react = [rel(p) for p in paths if p.lower().endswith(REACT_EXTS)] if has_pkg else []
+    lintable = [rel(p) for p in paths if p.lower().endswith(ESLINT_EXTS)] if has_pkg else []
+    for name, items in (("agent-files.txt", agent), ("react-files.txt", react),
+                        ("lint-files.txt", lintable)):
+        with open(os.path.join(tmp, name), "w") as fh:
+            fh.write("\n".join(items))
 
     numstat = git("diff", "--numstat", base_ref() + "...HEAD")
     added = sum(int(l.split("\t")[0]) for l in numstat.splitlines()
                 if l.split("\t")[0].isdigit())
 
     out = {
-        "run_eslint": "true" if run_eslint else "false",
+        "run_eslint": "true" if (run_eslint and lintable) else "false",
         "semgrep_configs": " ".join("--config " + c for c in configs),
         "changed_count": str(len(paths)),
         "run_react_doctor": "true" if react else "false",
