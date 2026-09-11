@@ -337,6 +337,27 @@ def test_prompt_gives_a_stopping_condition_in_both_directions():
     assert "do not stop early" in SYSTEM
 
 
+
+def test_changed_files_are_preloaded_not_left_to_tool_calls():
+    """Runs the real builder against this repo's own last commit. No API calls."""
+    import subprocess
+    import review
+    head1 = subprocess.run(("git", "rev-parse", "-q", "--verify", "HEAD~1"),
+                           capture_output=True, text=True)
+    if head1.returncode != 0:
+        return  # shallow clone; nothing to diff against
+    prompt, paths = review.build_prompt(head1.stdout.strip())
+    if not prompt:
+        return  # a docs-only commit is correctly skipped
+    # Every changed file's contents are in the prompt, so none costs a tool call.
+    for p in paths:
+        assert "## {}".format(p) in prompt, p
+    assert "do not spend a tool call re-reading" in prompt
+    # And the reads it cannot predict are still pushed to the tools, batched.
+    assert "callers and callees" in prompt
+    assert "ONE turn" in prompt
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

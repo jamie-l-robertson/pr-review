@@ -365,11 +365,17 @@ def worth_reviewing(paths):
 
 
 def build_prompt(base):
-    """The diff and what was already checked — not the whole repo.
+    """The diff, the changed files in full, and what the checks already found.
 
-    Full file contents and one-hop neighbours used to be packed in here, ~190k
-    tokens a run, chosen up front and capped. The reviewer now reads what it
-    needs through tools, so this only has to point it at the right place."""
+    The changed files are included rather than left for the tools. The prompt
+    requires every one to be opened, so those reads are predictable — and a tool
+    result lands after the cache breakpoint and is replayed at full price on
+    every later turn, where this block is cached at a tenth of that. Including
+    them is both fewer turns and fewer tokens.
+
+    What is NOT included is everything the reviewer cannot predict needing:
+    callers, sibling call sites, tests, history. Guessing at those was the old
+    bundle's mistake, and the tools exist for them."""
     paths = changed_files(base)
     if not paths:
         return None, []
@@ -383,12 +389,34 @@ def build_prompt(base):
         "# Changed files — every one needs a verdict\n"
         + "\n".join("- " + p for p in paths),
         "# Diff under review\n" + fenced(diff, "diff"),
+    ]
+
+    used, omitted = len(diff), []
+    blocks.append("# Changed files in full — already here, do not re-read them")
+    for p in paths:
+        text = read(p)
+        if text is None:
+            omitted.append(p)
+            continue
+        if used + len(text) > BUDGET:
+            omitted.append(p)
+            continue
+        used += len(text)
+        blocks.append("## {}\n{}".format(p, fenced(text)))
+    if omitted:
+        blocks.append("These changed files did not fit and must be read with the "
+                      "tools:\n" + "\n".join("- " + p for p in omitted))
+
+    blocks += [
         "# Pre-check findings (noisy — verify before repeating)\n" + findings_context(),
         reported_already(),
-        "Read whatever you need with the tools before answering: open the changed "
-        "files in full, follow their callers and callees, check whether a test "
-        "covers the behaviour, look at a file's history when a change looks "
-        "deliberate. Do not guess at code you have not opened.",
+        "The changed files are above in full — do not spend a tool call re-reading "
+        "one. Use the tools for what is not here: callers and callees of what "
+        "changed, the second call site, whether a test covers the behaviour, a "
+        "file's history when a change looks deliberate. Ask for every read you "
+        "already know you need in ONE turn — parallel calls cost a single turn, "
+        "the same reads one at a time cost a turn each, and cost grows with the "
+        "square of the turns.",
     ]
     return "\n\n".join(blocks), paths
 
