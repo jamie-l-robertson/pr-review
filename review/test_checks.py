@@ -370,6 +370,21 @@ def test_build_artefacts_are_never_reviewed():
         assert not skipped(p), p
 
 
+
+def test_cache_ttls_match_what_each_block_can_reuse():
+    import inspect
+    from review import call_claude
+    src = inspect.getsource(call_claude)
+    # The system block is identical across runs and across PRs, so an hour of
+    # reuse is worth the 2x write. The diff block cannot outlive its own run —
+    # the next push changes it — so paying the 1h premium buys nothing.
+    sys_idx = src.index('"text": SYSTEM')
+    msg_idx = src.index('"text": prompt')
+    assert '"ttl": "1h"' in src[sys_idx:msg_idx], "system block should hold 1h"
+    assert '"ttl": "5m"' in src[msg_idx:], "diff block should be 5m"
+    assert '"ttl": "1h"' not in src[msg_idx:], "diff block must not pay the 1h premium"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
