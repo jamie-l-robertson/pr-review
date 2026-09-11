@@ -248,6 +248,29 @@ def test_agent_config_paths_are_recognised():
         assert not hit(p), p
 
 
+
+def test_compact_keeps_findings_and_drops_padding():
+    import json
+    from review import compact
+    # ESLint emits an entry per linted file and inlines each file's source, so a
+    # real report was 96% padding and the read cap truncated the findings away.
+    report = json.dumps(
+        [{"filePath": "clean{}.ts".format(i), "messages": [], "source": "x" * 500}
+         for i in range(50)]
+        + [{"filePath": "bad.ts", "source": "y" * 5000,
+            "messages": [{"ruleId": "no-x", "severity": 2, "line": 3}]}])
+    out = compact("eslint.json", report)
+    kept = json.loads(out)
+    assert len(kept) == 1 and kept[0]["filePath"] == "bad.ts"
+    assert kept[0]["messages"][0]["ruleId"] == "no-x"
+    assert "source" not in kept[0], "the file body must not be shipped"
+    assert len(out) < len(report) / 10
+    # A report with nothing in it says nothing.
+    assert compact("eslint.json", "[]") == ""
+    # Anything unparseable is passed through rather than swallowed.
+    assert compact("eslint.json", "not json at all") == "not json at all"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

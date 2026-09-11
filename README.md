@@ -345,6 +345,18 @@ lots of files marked `not-reviewed`, the cap is costing you findings.
 
 Caching saved roughly $10 on that run. It is not optional at this scale.
 
+## Check output is compacted first
+
+Tools pad their reports. ESLint emits an entry for every file it lints and inlines
+each file's source, so a 443-file repo produced 155KB of which 436 entries were
+`"messages": []` — and the 60KB read cap then truncated the real findings away.
+Lint output was reaching the model as a wall of empty objects.
+
+Reports are now parsed and stripped before the cap: entries with no findings are
+dropped and inlined source removed, since the reviewer can open the file itself.
+That report became 7.4KB with all 16 findings intact. Anything unparseable is
+passed through rather than swallowed.
+
 ## Auditing the prompt
 
 The system block is cached with a 1h TTL and read back at 0.1x, so **trimming it
