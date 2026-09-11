@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
 MODEL = os.environ.get("MODEL") or "claude-opus-5"
-EFFORT = os.environ.get("EFFORT") or "xhigh"
+EFFORT = os.environ.get("EFFORT") or "medium"
 NAME = os.environ.get("REVIEWER_NAME") or "Inquisitor"
 MAX_REVIEWS = int(os.environ.get("MAX_REVIEWS_PER_PR") or 10)
 NO_POST = bool(os.environ.get("NO_POST"))
@@ -388,9 +388,12 @@ def call_claude(prompt):
         # effort is rejected outright on Haiku 4.5 / Sonnet 4.5 — a 400, not a warning.
         output_config["effort"] = EFFORT
 
-    resp = client.messages.create(
+    # Streamed, and with far more room than the findings need: at xhigh effort
+    # thinking tokens count toward max_tokens, and 16000 truncated the JSON
+    # mid-string — which surfaced as a JSONDecodeError, not as "ran out of room".
+    resp = client.messages.stream(
         model=MODEL,
-        max_tokens=16000,
+        max_tokens=32000,
         # The system block is byte-identical on every run in a repo, so it is the
         # one part of the request worth a cache breakpoint. Everything after it
         # (the diff, the file contents) changes per push.
@@ -404,6 +407,12 @@ def call_claude(prompt):
         output_config=output_config,
         messages=[{"role": "user", "content": prompt}],
     )
+    with resp as stream:
+        resp = stream.get_final_message()
+    if resp.stop_reason == "max_tokens":
+        raise SystemExit(
+            "the model hit max_tokens before finishing its findings — raise "
+            "max_tokens or lower EFFORT (currently {})".format(EFFORT))
     if resp.stop_reason == "refusal":
         raise SystemExit("Claude declined to review this diff: {}".format(resp.stop_details))
     text = next(b.text for b in resp.content if b.type == "text")
