@@ -145,6 +145,26 @@ semgrep matches patterns, not advisories — nothing fed that topic. `pnpm audit
 now does, gated on a lockfile actually moving in the diff. Auditing the whole tree
 on every PR would report the same backlog forever and teach everyone to skip it.
 
+## Second-order effects
+
+A change can be correct in isolation and still break something. The prompt asks
+what a change makes *untrue* elsewhere, not only whether the new lines are right:
+
+- rows already written under the old behaviour — does this need a backfill?
+- denormalised or cached copies: counters, aggregates, search indexes, ISR/CDN
+- concurrency with what already runs: triggers, crons, queue consumers, migrations
+  against live traffic
+- other paths to the same outcome — a fix at one call site, not at the second
+- contracts: callers, tests, types, response shapes, constraints, persisted enums
+- deploy and rollback order
+
+Consequences must be **checked, not speculated**: "this might affect callers"
+without having opened them is worth nothing, and the tools exist to go and look.
+
+The pasteable fix prompt carries the same question, so an agent fixing a finding
+does not reintroduce the problem one layer out. It is told to surface a knock-on
+rather than silently widen the diff — whether to fix it too is the author's call.
+
 ## Review scope
 
 Eight topics, four of them conditional — a topic whose condition does not hold is

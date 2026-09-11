@@ -297,6 +297,25 @@ def test_paths_are_made_relative_to_the_working_directory():
     assert rel_to_workdir("application/a.ts", "app") == "application/a.ts"
 
 
+
+def test_second_order_effects_are_in_both_prompts():
+    from review import SYSTEM, fix_block
+    # A change can be right in isolation and still break something. Both the
+    # review prompt and the pasteable fix prompt have to ask that question —
+    # the reviewer to find it, the fixing agent not to reintroduce it.
+    for phrase in ("SECOND-ORDER EFFECTS", "already written under the old behaviour",
+                   "Denormalised or cached", "Other paths to the same outcome",
+                   "Deploy and rollback order"):
+        assert phrase in SYSTEM, phrase
+    # Claims must be checked, not speculated.
+    assert "Report only consequences you have actually checked" in SYSTEM
+    block = fix_block({"id": "x", "path": "a.ts", "line": 1, "severity": "minor",
+                       "category": "code-quality", "body": "b", "remedy": "r"})
+    assert "makes untrue elsewhere" in block
+    # And widening the diff is the author's call, not the agent's.
+    assert "let the author decide" in block
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
