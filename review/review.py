@@ -357,11 +357,57 @@ def commentable_lines(base):
 
 # Files that cannot hold a defect worth a review. A PR touching only these is
 # not worth a model call at all.
-INERT = (".md", ".txt", ".json", ".lock", ".svg", ".png", ".jpg", ".webp", ".ico")
+INERT = (".md", ".txt", ".json", ".lock", ".svg", ".png", ".jpg", ".webp", ".ico",
+         ".gif", ".woff", ".woff2", ".ttf", ".pdf", ".snap")
+
+# Config is JSON but is not inert: a new dependency is a supply-chain decision,
+# and a compiler or framework setting changes how everything else behaves.
+# pnpm audit catches a known CVE; it has no view on why a package is there.
+CONFIG_FILES = ("package.json", "tsconfig.json", "jsconfig.json", "vercel.json",
+                "tsconfig.base.json", "turbo.json", "nx.json", "deno.json")
+CONFIG_SUFFIXES = (".config.js", ".config.ts", ".config.mjs", ".config.cjs",
+                   ".config.json", ".config.yml", ".config.yaml")
+
+# Generated: the generator is what deserves review, not its output. Nothing
+# repo-specific belongs here — this list ships to every consumer.
+GENERATED = ("__snapshots__/", "coverage/", "storybook-static/", ".turbo/",
+             "out/", ".svelte-kit/", "__generated__/")
+GENERATED_SUFFIXES = (".min.js", ".min.css", ".pb.go", "_pb2.py", ".gen.ts",
+                      ".gen.go", "next-env.d.ts")
+GENERATED_MARKERS = (".generated.", ".gen.")
+
+# CI and agent configuration. The deterministic checks still cover these —
+# semgrep p/github-actions on workflows, SkillSpector on hooks and MCP config —
+# but the reviewer does not comment on them. They change for reasons a code
+# reviewer has no view on (a pin bump, a hook tweak), and a one-line workflow
+# edit was pulling a full review every time.
+CONFIG_DIRS = (".github/", ".claude/", ".cursor/", ".superpowers/", ".codex/",
+               ".vscode/", ".idea/")
 
 
-def worth_reviewing(paths):
-    return [p for p in paths if not p.lower().endswith(INERT)]
+def reviewable(paths):
+    """The files the model is asked to judge — not everything that changed.
+
+    This filters, it does not merely gate: a PR of one source file and three
+    changelog entries should send the model one file, not four."""
+    out = []
+    for p in paths:
+        low = p.lower()
+        name = os.path.basename(low)
+        if any(low.startswith(d) for d in CONFIG_DIRS):
+            continue
+        if any(g in low for g in GENERATED) or low.endswith(GENERATED_SUFFIXES):
+            continue
+        if any(m in name for m in GENERATED_MARKERS):
+            continue
+        # Config earns review even though it is JSON.
+        if name in CONFIG_FILES or low.endswith(CONFIG_SUFFIXES):
+            out.append(p)
+            continue
+        if low.endswith(INERT):
+            continue
+        out.append(p)
+    return out
 
 
 def build_prompt(base):
@@ -376,13 +422,16 @@ def build_prompt(base):
     What is NOT included is everything the reviewer cannot predict needing:
     callers, sibling call sites, tests, history. Guessing at those was the old
     bundle's mistake, and the tools exist for them."""
-    paths = changed_files(base)
+    changed = changed_files(base)
+    paths = reviewable(changed)
     if not paths:
+        if changed:
+            print("only docs, assets or CI/agent config changed; skipping the call",
+                  file=sys.stderr)
         return None, []
-    if not worth_reviewing(paths):
-        print("nothing but docs and assets in this diff; skipping the call",
-              file=sys.stderr)
-        return None, []
+    if len(paths) < len(changed):
+        print("reviewing {} of {} changed files; the rest are docs, assets or "
+              "CI/agent config".format(len(paths), len(changed)), file=sys.stderr)
     diff = git("diff", "--unified=3", base + "...HEAD", "--", *paths)
 
     blocks = [

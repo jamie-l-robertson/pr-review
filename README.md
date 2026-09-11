@@ -165,6 +165,38 @@ The pasteable fix prompt carries the same question, so an agent fixing a finding
 does not reintroduce the problem one layer out. It is told to surface a knock-on
 rather than silently widen the diff — whether to fix it too is the author's call.
 
+## What the model is not shown
+
+Excluded from the review:
+
+| | |
+|---|---|
+| `.github/` `.claude/` `.cursor/` `.superpowers/` `.codex/` `.vscode/` `.idea/` | CI and agent config |
+| `__snapshots__/` `*.snap` | test-runner output — a recording of behaviour, not the behaviour |
+| `*.generated.*` `*.gen.*` `*.pb.go` `*_pb2.py` `next-env.d.ts` | codegen; review the generator instead |
+| `*.min.js` `*.min.css` | unreviewable by construction |
+| `coverage/` `storybook-static/` `.turbo/` `out/` `.svelte-kit/` | build output that sometimes gets committed |
+| docs, images, fonts, PDFs | not code |
+
+**Config is not inert, even though it is JSON.** `package.json`, `tsconfig.json`,
+`vercel.json` and anything `*.config.*` stay in: a new dependency is a
+supply-chain decision and a compiler setting changes how everything else
+behaves. `pnpm audit` catches a known CVE — it has no view on why a package is
+there.
+
+Deliberately still reviewed: test fixtures, migrations and `.env.example`.
+Fixtures are where bad assumptions hide, and `.env.example` is exactly where a
+real secret gets pasted by accident. They
+change for reasons a code reviewer has no view on — a pin bump, a hook tweak — and
+a one-line workflow edit was pulling a full review every time.
+
+**The deterministic checks still see them.** semgrep `p/github-actions` scans
+workflows, SkillSpector scans hooks and MCP config, and betterleaks scans
+everything. Excluding them from the model is not excluding them from the pipeline.
+
+A PR containing nothing else skips the model call entirely. A mixed PR sends only
+the source files — this filters, it does not merely gate.
+
 ## Review scope
 
 Eight topics, four of them conditional — a topic whose condition does not hold is
