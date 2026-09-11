@@ -255,6 +255,30 @@ def house_rules():
     return "\n\n".join(parts) if parts else "(No conventions file found in this repo.)"
 
 
+def compact(name, text):
+    """Strip the empty scaffolding some tools pad their reports with.
+
+    ESLint emits an entry per linted file, so a 443-file repo produced 155KB of
+    which 436 entries were `"messages": []`. The 60KB read cap then truncated
+    the handful of real findings away, and lint output never reached the model
+    at all."""
+    try:
+        data = json.loads(text)
+    except (ValueError, TypeError):
+        return text
+    if name == "eslint.json" and isinstance(data, list):
+        # `source` is the whole file inlined. The reviewer can open the file
+        # itself now, so shipping a copy of it per finding is pure weight.
+        data = [{k: v for k, v in f.items()
+                 if k not in ("source", "suppressedMessages", "usedDeprecatedRules")}
+                for f in data if f.get("messages")]
+    elif name == "semgrep.json" and isinstance(data, dict):
+        data = {k: v for k, v in data.items() if k in ("results", "errors") and v}
+    elif name == "audit.json" and isinstance(data, dict):
+        data = data.get("advisories") or data.get("vulnerabilities") or data
+    return json.dumps(data, indent=1) if data else ""
+
+
 def findings_context():
     """Whatever the pre-check steps managed to write.
 
@@ -274,7 +298,9 @@ def findings_context():
     }
     out, missing = [], []
     for label, (name, was_expected) in expected.items():
-        text = read(os.path.join(tmp, name), 60_000)
+        text = read(os.path.join(tmp, name), 2_000_000)
+        if text:
+            text = compact(name, text)[:60_000]
         if text and text.strip() not in ("", "[]", "{}"):
             out.append("## {} output\n{}".format(label, fenced(text, "json")))
         elif was_expected and text is None:
