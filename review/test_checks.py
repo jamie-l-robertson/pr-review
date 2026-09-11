@@ -316,6 +316,27 @@ def test_second_order_effects_are_in_both_prompts():
     assert "let the author decide" in block
 
 
+
+def test_turn_cap_is_counted_in_turns_not_tool_calls():
+    # A single turn can carry several parallel tool calls, so comparing calls
+    # against a turn cap reported a cap that had not been hit — and that line is
+    # the signal for whether the cap is too tight.
+    import inspect
+    from review import call_claude
+    src = inspect.getsource(call_claude)
+    assert "turns += 1" in src
+    assert "if turns >= MAX_ITERATIONS" in src
+    assert "if calls >= MAX_ITERATIONS" not in src
+
+
+def test_prompt_gives_a_stopping_condition_in_both_directions():
+    from review import SYSTEM
+    # Frugality alone would make it stop early; thoroughness alone would make it
+    # read everything. It needs both halves.
+    assert "Stop reading when another read would not change your findings" in SYSTEM
+    assert "do not stop early" in SYSTEM
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

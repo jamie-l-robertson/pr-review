@@ -376,6 +376,13 @@ from what it has already read and to mark anything it did not genuinely examine 
 review, never into no review. At a tight cap that wrap-up call is the normal path rather than
 an exception.
 
+The log reports `turns: N/M` alongside the token counts, so you can see whether a
+review finished early or ran to the ceiling. The model does **not** minimise turns
+on its own — at a cap of 40 it used all 40 — so the prompt gives it an explicit
+stopping condition in both directions: stop when another read would not change the
+findings, but do not stop while a changed file is unopened or a raised consequence
+unchecked.
+
 Watch for `hit the N-turn cap` in the log. Occasionally is fine. On every PR, with
 lots of files marked `not-reviewed`, the cap is costing you findings.
 

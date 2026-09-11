@@ -141,6 +141,11 @@ time and finish each before moving on. Every changed file you do not report on i
 a file you are asserting is correct — do not skim one because you already found \
 something in another. Reporting two obvious defects and stopping is a failure; the \
 third defect is the one that reaches production.
+- Stop reading when another read would not change your findings. Thoroughness is \
+opening what matters, not opening everything — a read that only confirms what you \
+already knew costs the author money and buys nothing. Equally, do not stop early \
+to be brief: if a changed file is still unopened, or a consequence you raised is \
+still unchecked, you are not finished.
 - Your reads are limited, so spend them where defects hide: state machines and \
 idempotency, error and retry paths, and the second and third call sites of a \
 changed function. Those are what a first pass misses.
@@ -446,8 +451,10 @@ def call_claude(prompt, client=None):
     # Mirror the conversation as it goes: the runner keeps its own copy and does
     # not expose it, and hitting the turn cap leaves the findings unwritten.
     history = [{"role": "user", "content": prompt}]
-    last, calls, usage_in, usage_out, cache_r, cache_w = None, 0, 0, 0, 0, 0
+    last, calls, turns = None, 0, 0
+    usage_in, usage_out, cache_r, cache_w = 0, 0, 0, 0
     for turn in runner:
+        turns += 1
         message = turn.get_final_message()
         last = message
         history.append({"role": "assistant", "content": message.content})
@@ -469,13 +476,16 @@ def call_claude(prompt, client=None):
     if last.stop_reason == "refusal":
         raise SystemExit("Claude declined to review this diff: {}".format(last.stop_details))
 
-    if calls >= MAX_ITERATIONS:
+    # turns, not calls: a single turn can carry several parallel tool calls, so
+    # comparing calls against a turn cap reported a cap that had not been hit.
+    if turns >= MAX_ITERATIONS:
         print("hit the {}-turn cap — the review may be partial; raise "
               "MAX_ITERATIONS if findings look thin".format(MAX_ITERATIONS),
               file=sys.stderr)
     print("model {} ({} tier)  tokens in/out: {}/{}  cache write/read: {}/{}  "
-          "tool calls: {}".format(MODEL, os.environ.get("TIER", "?"), usage_in,
-                                  usage_out, cache_w, cache_r, calls), file=sys.stderr)
+          "turns: {}/{}  tool calls: {}".format(
+              MODEL, os.environ.get("TIER", "?"), usage_in, usage_out,
+              cache_w, cache_r, turns, MAX_ITERATIONS, calls), file=sys.stderr)
 
     parsed = getattr(last, "parsed_output", None)
     if parsed is None:
