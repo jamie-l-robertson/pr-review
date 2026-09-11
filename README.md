@@ -352,6 +352,28 @@ can change review quality — so measure before assuming it is free.
 Every run logs `cache write/read`. If reads stay at zero across consecutive pushes,
 the breakpoint is costing you 25% on that block and should be removed.
 
+## Testing it without spending anything
+
+Most of what can break here is plumbing, and plumbing does not need a model:
+
+```bash
+python review/test_checks.py   # PII, routing, tiering, ids, coverage, sandbox
+python review/test_wrapup.py   # the turn cap degrading into a wrap-up call
+```
+
+`test_wrapup.py` injects a fake client into `call_claude`, so the loop, the
+history mirroring and the fallback are all exercised for nothing. Both run on
+every PR here.
+
+For an end-to-end run against a real diff, use the cheapest model rather than the
+configured one — the wiring is what you are testing, not the review quality:
+
+```bash
+MODEL=claude-haiku-4-5 python review/backtest.py --at <sha> --base <sha>
+```
+
+That is a few pennies against several dollars on the elevated model.
+
 ## Measuring it
 
 `review/backtest.py` replays the reviewer over already-merged PRs and writes a
