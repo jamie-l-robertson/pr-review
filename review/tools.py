@@ -13,9 +13,12 @@ import os
 import subprocess
 
 ROOT = os.path.realpath(os.getcwd())
+# Every tool result is replayed on each later turn of the loop, so an oversized
+# one is not paid for once but once per remaining turn. Keep them tight and make
+# the model ask again for more.
 MAX_BYTES = 60_000
-MAX_LINES = 400
-MAX_HITS = 60
+MAX_LINES = 200
+MAX_HITS = 40
 
 
 def _resolve(path):

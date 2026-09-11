@@ -206,6 +206,35 @@ def test_tools_refuse_to_leave_the_repo():
     assert "refused" in tools.history("/etc")
 
 
+
+def test_inert_diffs_skip_the_model_call():
+    from review import worth_reviewing
+    # A docs-and-assets-only PR is not worth paying a model to read.
+    assert worth_reviewing(["README.md", "public/logo.svg", "docs/a.txt"]) == []
+    # One real file makes the whole diff worth reviewing.
+    assert worth_reviewing(["README.md", "lib/a.ts"]) == ["lib/a.ts"]
+    # Workflow YAML is NOT inert — it is exactly where CI secrets leak.
+    assert worth_reviewing([".github/workflows/ci.yml"]) == [".github/workflows/ci.yml"]
+    # Lockfiles never reach here; common.skipped() drops them from changed_files.
+    from common import skipped
+    assert skipped("pnpm-lock.yaml") and skipped("yarn.lock")
+
+
+
+def test_model_tiering():
+    from detect import tier
+    # Small, low-risk UI work does not need the expensive model.
+    assert tier(["components/Button.tsx"], 20) == "routine"
+    assert tier(["app/feed/feed.module.scss"], 40) == "routine"
+    # Size escalates.
+    assert tier(["a{}.ts".format(i) for i in range(20)], 50) == "elevated"
+    assert tier(["a.ts"], 900) == "elevated"
+    # So does anything where a missed defect is expensive.
+    for p in ("lib/sessionAccess.ts", "app/api/me/route.ts", "db/schema/x.ts",
+              "app/admin/page.tsx", ".github/workflows/ci.yml", "lib/ratelimit.ts"):
+        assert tier([p], 5) == "elevated", p
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

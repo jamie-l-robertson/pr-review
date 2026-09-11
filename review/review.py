@@ -280,6 +280,15 @@ def commentable_lines(base):
     return out
 
 
+# Files that cannot hold a defect worth a review. A PR touching only these is
+# not worth a model call at all.
+INERT = (".md", ".txt", ".json", ".lock", ".svg", ".png", ".jpg", ".webp", ".ico")
+
+
+def worth_reviewing(paths):
+    return [p for p in paths if not p.lower().endswith(INERT)]
+
+
 def build_prompt(base):
     """The diff and what was already checked — not the whole repo.
 
@@ -288,6 +297,10 @@ def build_prompt(base):
     needs through tools, so this only has to point it at the right place."""
     paths = changed_files(base)
     if not paths:
+        return None, []
+    if not worth_reviewing(paths):
+        print("nothing but docs and assets in this diff; skipping the call",
+              file=sys.stderr)
         return None, []
     diff = git("diff", "--unified=3", base + "...HEAD", "--", *paths)
 
@@ -347,7 +360,12 @@ def call_claude(prompt):
                  "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
         tools=kit,
         output_format=ReviewResult,
-        messages=[{"role": "user", "content": prompt}],
+        # The diff is re-sent on every turn of the loop, so it earns a breakpoint
+        # of its own: without one, an eight-turn review pays full price for the
+        # same bundle eight times.
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": prompt,
+             "cache_control": {"type": "ephemeral", "ttl": "1h"}}]}],
         # max_tokens this high estimates past the SDK's 10-minute non-streaming
         # ceiling, so the runner must stream.
         stream=True,
@@ -372,8 +390,9 @@ def call_claude(prompt):
     if last.stop_reason == "refusal":
         raise SystemExit("Claude declined to review this diff: {}".format(last.stop_details))
 
-    print("tokens in/out: {}/{}  cache write/read: {}/{}  tool calls: {}".format(
-        usage_in, usage_out, cache_w, cache_r, calls), file=sys.stderr)
+    print("model {} ({} tier)  tokens in/out: {}/{}  cache write/read: {}/{}  "
+          "tool calls: {}".format(MODEL, os.environ.get("TIER", "?"), usage_in,
+                                  usage_out, cache_w, cache_r, calls), file=sys.stderr)
 
     parsed = getattr(last, "parsed_output", None)
     if parsed is None:
@@ -650,7 +669,9 @@ def post(result, valid):
         comments = comments[:MAX_COMMENTS]
         body += "\n\n_{} further finding(s) withheld — a review this long usually means "\
                 "the diff was misread rather than that the code is this broken._".format(dropped)
-    body += "\n\n<sub>{} · {} finding(s)</sub>".format(NAME, len(result["findings"]))
+    body += "\n\n<sub>{} · {} finding(s){}</sub>".format(
+        NAME, len(result["findings"]),
+        " · routine review" if os.environ.get("TIER") == "routine" else "")
     payload = {"event": "COMMENT", "body": body, "comments": comments}
 
     path = "repos/{}/pulls/{}/reviews".format(REPO, PR)

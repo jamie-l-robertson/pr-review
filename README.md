@@ -64,7 +64,9 @@ That's the whole setup — no scripts to copy, no config file.
 | Input | Default | |
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
-| `model` | `claude-opus-5` | Any Anthropic model id. |
+| `model` | *(auto)* | Pin a model id to override the tiering below. |
+| `routine-model` | `claude-sonnet-5` | Small, low-risk diffs. |
+| `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-reviews-per-pr` | `10` | Stop after this many reviews on one PR. `0` disables. |
@@ -79,6 +81,25 @@ A repo with the app in a subdirectory:
     with:
       working-directory: app
 ```
+
+## Which model runs
+
+Picked from the diff, because most PRs do not need the expensive model and the
+ones that do are recognisable up front:
+
+| Condition | Model |
+|---|---|
+| More than 15 files, or more than 400 added lines | elevated |
+| Touches auth, session, token, payment, admin, db, schema, migration, `/api/`, proxy, middleware, rate limiting, or `.github/` | elevated |
+| Anything else | routine |
+
+A routine review says so in its footer, so a cheaper review is never a silent one,
+and the run log names the model and tier. Set the `model` input to pin one and skip
+the routing entirely.
+
+This is tuned on judgement, not measurement — the thresholds are a guess at where
+risk starts. Watch whether routine reviews start missing things you care about, and
+move the line if they do.
 
 ## Thoroughness
 

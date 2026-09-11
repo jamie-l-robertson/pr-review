@@ -10,7 +10,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import base_ref, changed_files  # noqa: E402
+from common import base_ref, changed_files, git  # noqa: E402
 
 # extension -> semgrep registry configs. Explicit configs only: `--config auto`
 # phones home and `semgrep ci` wants an account.
@@ -31,6 +31,25 @@ SEMGREP = {
     ".dockerfile": ("p/dockerfile",),
 }
 ESLINT_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+
+# Paths where a missed defect is expensive: auth, data, money, admin, and the CI
+# that holds the keys to all of it. A diff touching these gets the better model
+# whatever its size.
+SENSITIVE = ("auth", "session", "login", "password", "token", "secret", "credential",
+             "payment", "billing", "checkout", "admin", "migration", "db/", "schema",
+             "/api/", "proxy.ts", "middleware", "ratelimit", "rate-limit", ".github/")
+BIG_FILES = 15
+BIG_LINES = 400
+
+
+def tier(paths, added):
+    """-> "elevated" or "routine". Pure, so the routing is testable without a diff."""
+    if len(paths) > BIG_FILES or added > BIG_LINES:
+        return "elevated"
+    low = [p.lower() for p in paths]
+    if any(s in p for p in low for s in SENSITIVE):
+        return "elevated"
+    return "routine"
 
 
 def route(paths, has_package_json=True):
@@ -57,10 +76,16 @@ def main():
     has_pkg = os.path.isfile(os.path.join(workdir, "package.json"))
     run_eslint, configs = route(paths, has_pkg)
 
+    numstat = git("diff", "--numstat", base_ref() + "...HEAD")
+    added = sum(int(l.split("\t")[0]) for l in numstat.splitlines()
+                if l.split("\t")[0].isdigit())
+
     out = {
         "run_eslint": "true" if run_eslint else "false",
         "semgrep_configs": " ".join("--config " + c for c in configs),
         "changed_count": str(len(paths)),
+        "tier": tier(paths, added),
+        "added_lines": str(added),
     }
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:

@@ -8,7 +8,18 @@ on:
         type: string
         default: "."
       model:
-        description: Anthropic model id.
+        description: >-
+          Anthropic model id. Leave empty to pick by diff: the routine model for
+          small, low-risk changes and the elevated one for large diffs or any
+          diff touching auth, data, money, admin or CI.
+        type: string
+        default: ""
+      routine-model:
+        description: Model for small, low-risk diffs.
+        type: string
+        default: claude-sonnet-5
+      elevated-model:
+        description: Model for large or sensitive diffs.
         type: string
         default: claude-opus-5
       effort:
@@ -172,7 +183,8 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ steps.range.outputs.base }}
           WORKING_DIRECTORY: ${{ inputs.working-directory }}
-          MODEL: ${{ inputs.model }}
+          MODEL: ${{ inputs.model || (steps.detect.outputs.tier == 'elevated' && inputs.elevated-model || inputs.routine-model) }}
+          TIER: ${{ steps.detect.outputs.tier }}
           EFFORT: ${{ inputs.effort }}
           REVIEWER_NAME: ${{ inputs.reviewer-name }}
           RAN_ESLINT: ${{ steps.detect.outputs.run_eslint }}
