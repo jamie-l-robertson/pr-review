@@ -65,9 +65,9 @@ That's the whole setup — no scripts to copy, no config file.
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | *(auto)* | Pin a model id to override the tiering below. |
-| `routine-model` | `claude-opus-5` | Small, low-risk diffs. Set `claude-sonnet-5` to trade depth for cost. |
+| `routine-model` | `claude-opus-5-5` | Small, low-risk diffs. Set `claude-sonnet-5` to trade depth for cost. |
 | `test-model` | `claude-haiku-4-5` | Used when the PR title contains `[test review]`. |
-| `elevated-model` | `claude-opus-5` | Large or sensitive diffs. |
+| `elevated-model` | `claude-opus-5-5` | Large or sensitive diffs. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-iterations` | `10` | Tool-use turns. Cost grows with the square of this. |
@@ -513,7 +513,7 @@ report with a blank verdict column:
 
 ```bash
 python review/backtest.py --last 10
-python review/backtest.py --last 10 --model claude-opus-5 --out backtest-opus.md
+python review/backtest.py --last 10 --model claude-opus-5-5 --out backtest-opus.md
 ```
 
 Each PR is reviewed inside a throwaway git worktree at that PR's head commit, so
