@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import MAX_FILE_BYTES, base_ref, changed_files, git, skipped  # noqa: E402
 
-MODEL = os.environ.get("MODEL") or "claude-opus-5"
+MODEL = os.environ.get("MODEL") or "claude-opus-5-5"
 EFFORT = os.environ.get("EFFORT") or "medium"
 NAME = os.environ.get("REVIEWER_NAME") or "Inquisitor"
 MAX_REVIEWS = int(os.environ.get("MAX_REVIEWS_PER_PR") or 5)

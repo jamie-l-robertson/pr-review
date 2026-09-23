@@ -17,7 +17,7 @@ on:
       routine-model:
         description: Model for small, low-risk diffs.
         type: string
-        default: claude-opus-5
+        default: claude-opus-5-5
       test-model:
         description: >-
           Used when the PR title contains [test review]. For runs that exercise
@@ -27,7 +27,7 @@ on:
       elevated-model:
         description: Model for large or sensitive diffs.
         type: string
-        default: claude-opus-5
+        default: claude-opus-5-5
       effort:
         description: >-
           low | medium | high | xhigh | max. Ignored on models that reject it
