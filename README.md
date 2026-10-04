@@ -65,9 +65,9 @@ That's the whole setup — no scripts to copy, no config file.
 |---|---|---|
 | `working-directory` | `.` | Where `package.json` / `tsconfig.json` live. |
 | `model` | *(auto)* | Pin a model id to override the tiering below. |
-| `routine-model` | `claude-opus-5-5` | Small, low-risk diffs. Set `claude-sonnet-5` to trade depth for cost. |
+| `routine-model` | `claude-sonnet-5-5` | Small, low-risk diffs. |
 | `test-model` | `claude-haiku-4-5` | Used when the PR title contains `[test review]`. |
-| `elevated-model` | `claude-opus-5-5` | Large or sensitive diffs. |
+| `elevated-model` | `claude-sonnet-5-5` | Large or sensitive diffs. Set `claude-opus-5-5` for more depth. |
 | `effort` | `medium` | `low`–`max`. Ignored on Haiku 4.5 / Sonnet 4.5, which reject it. |
 | `reviewer-name` | `Inquisitor` | Name shown on the review and each inline comment. |
 | `max-iterations` | `10` | Tool-use turns. Cost grows with the square of this. |
@@ -107,8 +107,9 @@ exercising the pipeline — a pin bump, a new pre-check, a workflow change — r
 than reviewing the code. Those runs are marked in the footer as a pipeline test so
 their findings are never mistaken for a real review.
 
-Both tiers default to Opus. The routing still exists, so setting `routine-model` to
-`claude-sonnet-5` restores the cheaper path for small diffs in one line.
+Both tiers default to Sonnet 5.5 at medium effort. The routing still exists, so
+setting `elevated-model` to `claude-opus-5-5` restores the deeper model for large
+or sensitive diffs.
 
 This is tuned on judgement, not measurement — the thresholds are a guess at where
 risk starts. Watch whether routine reviews start missing things you care about, and
