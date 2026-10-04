@@ -384,6 +384,9 @@ def test_cache_ttls_match_what_each_block_can_reuse():
     assert '"ttl": "1h"' in src[sys_idx:msg_idx], "system block should hold 1h"
     assert '"ttl": "5m"' in src[msg_idx:], "diff block should be 5m"
     assert '"ttl": "1h"' not in src[msg_idx:], "diff block must not pay the 1h premium"
+    # The moving breakpoint. Without it, tool results after the diff are replayed
+    # at full price on every later turn.
+    assert 'cache_control={"type": "ephemeral", "ttl": "5m"}' in src[msg_idx:]
 
 
 

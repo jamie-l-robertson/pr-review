@@ -470,8 +470,11 @@ Two breakpoints, with deliberately different lifetimes:
 Tool definitions need no breakpoint of their own — everything before the system
 breakpoint is already in the cached prefix.
 
-Nothing else is worth caching. The rest of a request is derived from the diff, and
-the diff is what changed.
+A third breakpoint moves. Every turn passes top-level `cache_control` at 5m,
+which marks the last block of that request, so the next turn reads the previous
+one — tool results included — at 0.1× instead of paying for it again. The
+wrap-up call reuses the system breakpoint and does not add one of its own: it
+runs once, so a breakpoint on its tail would be a 1.25× write nothing reads.
 
 ### Where the tokens actually go
 
