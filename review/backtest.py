@@ -78,7 +78,7 @@ def main():
                                  "Use to re-test recall against a diff you know the "
                                  "answer to. Requires --base.")
     ap.add_argument("--base", help="Base commit for --at.")
-    ap.add_argument("--model", default=os.environ.get("MODEL") or "claude-sonnet-5")
+    ap.add_argument("--model", default=os.environ.get("MODEL") or "claude-sonnet-5-5")
     ap.add_argument("--out", default="backtest.md")
     args = ap.parse_args()
 
