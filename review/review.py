@@ -414,10 +414,9 @@ def build_prompt(base):
     """The diff, the changed files in full, and what the checks already found.
 
     The changed files are included rather than left for the tools. The prompt
-    requires every one to be opened, so those reads are predictable — and a tool
-    result lands after the cache breakpoint and is replayed at full price on
-    every later turn, where this block is cached at a tenth of that. Including
-    them is both fewer turns and fewer tokens.
+    requires every one to be opened, so those reads are predictable. Putting
+    them here keeps them inside the 5m breakpoint from the first turn, which is
+    both fewer turns and fewer tokens.
 
     What is NOT included is everything the reviewer cannot predict needing:
     callers, sibling call sites, tests, history. Guessing at those was the old
@@ -503,6 +502,15 @@ def call_claude(prompt, client=None):
     client = client or anthropic.Anthropic()
     kit = [beta_tool(f) for f in (repo_tools.read_file, repo_tools.search,
                                   repo_tools.list_files, repo_tools.history)]
+    # 1h, not 5m. This block is identical across runs and across PRs in the same
+    # repo, so an hour of reuse repays the 2x write.
+    system = [{"type": "text", "text": SYSTEM + "\n\n" + house_rules(),
+               "cache_control": {"type": "ephemeral", "ttl": "1h"}}]
+    # 5m, not 1h. The diff cannot outlive its own run — the next push changes
+    # it — so it only has to survive this loop, whose turns are seconds apart.
+    # A 1h write costs 2x against 1.25x for 5m, and that premium buys nothing.
+    prompt_blocks = [{"type": "text", "text": prompt,
+                      "cache_control": {"type": "ephemeral", "ttl": "5m"}}]
 
     runner = client.beta.messages.tool_runner(
         model=MODEL,
@@ -510,23 +518,15 @@ def call_claude(prompt, client=None):
         # Enough rope to open the changed files and follow a few threads, not
         # enough to wander the repo until the budget is gone.
         max_iterations=MAX_ITERATIONS,
-        system=[{"type": "text", "text": SYSTEM + "\n\n" + house_rules(),
-                 "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+        system=system,
         tools=kit,
         output_format=ReviewResult,
-        # The diff is re-sent on every turn of the loop, so it earns a breakpoint
-        # of its own: without one, an eight-turn review pays full price for the
-        # same bundle eight times.
-        #
-        # 5m, not 1h. This block is diff-specific and can never be reused by a
-        # later run — the next push has a different diff — so it only has to
-        # survive this loop, whose turns are seconds apart. A 1h write costs 2x
-        # against 1.25x for 5m, and that 0.75x premium was buying nothing. The
-        # system block above keeps 1h because it IS identical across runs and
-        # across PRs in the same repo.
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": prompt,
-             "cache_control": {"type": "ephemeral", "ttl": "5m"}}]}],
+        # Marks the last block of each turn. The explicit breakpoints above stay
+        # put; this one moves, so turn N+1 reads turn N's tool results from
+        # cache instead of paying for them again. Same 5m TTL as the diff block:
+        # a different TTL on a block that already has one is a 400.
+        cache_control={"type": "ephemeral", "ttl": "5m"},
+        messages=[{"role": "user", "content": prompt_blocks}],
         # max_tokens this high estimates past the SDK's 10-minute non-streaming
         # ceiling, so the runner must stream.
         stream=True,
@@ -534,7 +534,7 @@ def call_claude(prompt, client=None):
 
     # Mirror the conversation as it goes: the runner keeps its own copy and does
     # not expose it, and hitting the turn cap leaves the findings unwritten.
-    history = [{"role": "user", "content": prompt}]
+    history = [{"role": "user", "content": prompt_blocks}]
     last, calls, turns = None, 0, 0
     usage_in, usage_out, cache_r, cache_w = 0, 0, 0, 0
     for turn in runner:
@@ -573,24 +573,33 @@ def call_claude(prompt, client=None):
 
     parsed = getattr(last, "parsed_output", None)
     if parsed is None:
-        # The cap cut the loop off mid-exploration. Ask once more, with no tools,
-        # for the findings it already has — a cheap cap is no use if reaching it
-        # throws the whole review away.
+        # The cap cut the loop off mid-exploration. Ask once more, with tools
+        # disabled, for the findings it already has — a cheap cap is no use if
+        # reaching it throws the whole review away.
         print("cap reached before findings; asking once more without tools",
               file=sys.stderr)
         history.append({"role": "user", "content":
                         "Stop reading and report now. Give your findings from what "
                         "you have already seen, and mark any changed file you did "
                         "not genuinely examine as not-reviewed rather than clean."})
-        final = client.messages.parse(
+        # Same tools and the same system breakpoint as the loop, so this call
+        # reads that prefix from cache. tool_choice none forces the answer the
+        # wrap-up exists to get; it invalidates the message cache only, and a
+        # breakpoint on this one-shot tail would be a 1.25x write nothing reads.
+        final = client.beta.messages.parse(
             model=MODEL,
             max_tokens=16000,
-            system=SYSTEM + "\n\n" + house_rules(),
+            system=system,
+            tools=kit,
+            tool_choice={"type": "none"},
             messages=history,
             output_format=ReviewResult,
         )
         u = final.usage
-        print("  wrap-up call: {} in / {} out".format(u.input_tokens, u.output_tokens),
+        print("  wrap-up call: {} in / {} out  cache write/read: {}/{}".format(
+            u.input_tokens, u.output_tokens,
+            getattr(u, "cache_creation_input_tokens", 0) or 0,
+            getattr(u, "cache_read_input_tokens", 0) or 0),
               file=sys.stderr)
         parsed = final.parsed_output
     if parsed is None:

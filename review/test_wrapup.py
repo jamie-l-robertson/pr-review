@@ -63,15 +63,18 @@ class FakeClient:
     def __init__(self, parsed_from_wrapup):
         self.parsed_from_wrapup = parsed_from_wrapup
         self.wrapup_messages = None
+        self.wrapup_kwargs = None
+        self.runner_kwargs = None
         self.beta = types.SimpleNamespace(
-            messages=types.SimpleNamespace(tool_runner=self._runner))
-        self.messages = types.SimpleNamespace(parse=self._parse)
+            messages=types.SimpleNamespace(tool_runner=self._runner, parse=self._parse))
 
     def _runner(self, **kw):
+        self.runner_kwargs = kw
         return FakeRunner([FakeMessage(), FakeMessage()])
 
     def _parse(self, **kw):
         self.wrapup_messages = kw["messages"]
+        self.wrapup_kwargs = kw
         return types.SimpleNamespace(parsed_output=self.parsed_from_wrapup,
                                      usage=FakeUsage())
 
@@ -87,9 +90,16 @@ def test_cap_falls_back_to_a_wrap_up_call():
     assert out["files_reviewed"][0]["verdict"] == "not-reviewed"
     # And the wrap-up saw the whole conversation, not just the last turn.
     msgs = client.wrapup_messages
-    assert msgs[0]["content"] == "the diff", "the original prompt must be first"
+    assert msgs[0]["content"][0]["text"] == "the diff", "the original prompt must be first"
+    assert msgs[0]["content"][0]["cache_control"]["ttl"] == "5m"
     assert sum(1 for m in msgs if m["role"] == "assistant") == 2
     assert "Stop reading and report now" in msgs[-1]["content"]
+    # The loop caches through the latest block; the wrap-up reads the system
+    # prefix and does not pay to write a breakpoint nothing will read.
+    assert client.runner_kwargs["cache_control"] == {"type": "ephemeral", "ttl": "5m"}
+    assert client.wrapup_kwargs["system"][0]["cache_control"]["ttl"] == "1h"
+    assert client.wrapup_kwargs["tool_choice"] == {"type": "none"}
+    assert "cache_control" not in client.wrapup_kwargs
 
 
 def test_no_output_even_after_wrap_up_is_an_error_not_a_clean_review():
